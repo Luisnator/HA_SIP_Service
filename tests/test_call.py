@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import Any
 
-from homeassistant.config_entries import ConfigSubentryData
-from homeassistant.const import CONF_ENTITY_ID, CONF_NAME
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -18,77 +14,32 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.sip_assistant.const import (
     CONF_ACTION_TYPE,
-    CONF_AI_ENABLED,
     CONF_ALLOWED_NETWORKS,
-    CONF_ANNOUNCE,
-    CONF_CODE,
     CONF_MAX_CALLS,
     CONF_PIN,
     CONF_SIP_PASSWORD,
     DOMAIN,
-    SECTION_CALL,
-    SECTION_NETWORK,
-    SUBENTRY_COMMAND,
 )
 
+from .helpers import SENSOR, command, setup, update_options, wait_for
 from .phone import FakePhone
-
-SENSOR = "sensor.sip_assistant_call_state"
-
-
-def command(code: str, name: str, **data: Any) -> ConfigSubentryData:
-    return ConfigSubentryData(
-        data={
-            CONF_NAME: name,
-            CONF_CODE: code,
-            CONF_ACTION_TYPE: "entity",
-            CONF_ENTITY_ID: "script.garage",
-            CONF_ANNOUNCE: True,
-            CONF_AI_ENABLED: True,
-            **data,
-        },
-        subentry_type=SUBENTRY_COMMAND,
-        title=f"{code} · {name}",
-        unique_id=None,
-    )
-
-
-async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-
-async def wait_for(condition: Callable[[], bool], timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not condition():
-            await asyncio.sleep(0.02)
 
 
 @pytest.fixture
 def entry_with_command(hass: HomeAssistant, mock_config_entry: MockConfigEntry) -> MockConfigEntry:
-    hass.config_entries.async_add_subentry(mock_config_entry, _subentry(command("1", "Garage")))
-    hass.config_entries.async_add_subentry(
+    update_options(
+        hass,
         mock_config_entry,
-        _subentry(
+        commands=[
+            command("1", "Garage"),
             command(
                 "21",
                 "Temperature",
                 **{CONF_ACTION_TYPE: "announcement", "response": "It is {{ 20 + 1 }} degrees"},
-            )
-        ),
+            ),
+        ],
     )
     return mock_config_entry
-
-
-def _subentry(data: ConfigSubentryData):
-    from homeassistant.config_entries import ConfigSubentry
-
-    return ConfigSubentry(
-        data=data["data"],
-        subentry_type=data["subentry_type"],
-        title=data["title"],
-        unique_id=data["unique_id"],
-    )
 
 
 async def test_keypad_command(
@@ -147,13 +98,7 @@ async def test_pin_and_hangup_button(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, sip_port: int
 ) -> None:
     """A PIN is required before the menu; the button ends the call."""
-    hass.config_entries.async_update_entry(
-        mock_config_entry,
-        options={
-            **mock_config_entry.options,
-            SECTION_CALL: {**mock_config_entry.options[SECTION_CALL], CONF_PIN: "4711"},
-        },
-    )
+    update_options(hass, mock_config_entry, call={CONF_PIN: "4711"})
     failed = async_capture_events(hass, f"{DOMAIN}_pin_failed")
     await setup(hass, mock_config_entry)
 
@@ -209,13 +154,7 @@ async def test_rejections_and_out_of_dialog_requests(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, sip_port: int
 ) -> None:
     """Busy, unsupported media, OPTIONS and REGISTER."""
-    hass.config_entries.async_update_entry(
-        mock_config_entry,
-        options={
-            **mock_config_entry.options,
-            SECTION_NETWORK: {**mock_config_entry.options[SECTION_NETWORK], CONF_MAX_CALLS: 1},
-        },
-    )
+    update_options(hass, mock_config_entry, network={CONF_MAX_CALLS: 1})
     rejected = async_capture_events(hass, f"{DOMAIN}_call_rejected")
     await setup(hass, mock_config_entry)
 
@@ -257,16 +196,7 @@ async def test_forbidden_network(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, sip_port: int
 ) -> None:
     """Calls from outside the allowed networks are rejected."""
-    hass.config_entries.async_update_entry(
-        mock_config_entry,
-        options={
-            **mock_config_entry.options,
-            SECTION_NETWORK: {
-                **mock_config_entry.options[SECTION_NETWORK],
-                CONF_ALLOWED_NETWORKS: "10.0.0.0/8",
-            },
-        },
-    )
+    update_options(hass, mock_config_entry, network={CONF_ALLOWED_NETWORKS: "10.0.0.0/8"})
     await setup(hass, mock_config_entry)
     async with FakePhone(sip_port) as phone:
         phone.invite()

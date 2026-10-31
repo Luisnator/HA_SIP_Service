@@ -1,0 +1,19 @@
+{
+  "name": "sip-assistant-panel",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Configuration panel of the SIP Assistant Home Assistant integration",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/sip-assistant-panel.ts --bundle --format=esm --minify --target=es2022 --legal-comments=none --outfile=../custom_components/sip_assistant/frontend/sip-assistant-panel.js",
+    "watch": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lit": "3.3.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

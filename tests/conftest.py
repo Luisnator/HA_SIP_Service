@@ -11,7 +11,6 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sip_assistant.config_flow import default_options
 from custom_components.sip_assistant.const import (
     CONF_SIP_PASSWORD,
     CONF_SIP_PORT,
@@ -20,6 +19,7 @@ from custom_components.sip_assistant.const import (
     SECTION_NETWORK,
     Engine,
 )
+from custom_components.sip_assistant.defaults import default_options
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +61,7 @@ def mock_config_entry(hass: HomeAssistant, entry_data: dict[str, Any]) -> MockCo
         title="SIP Assistant",
         data=entry_data,
         options=options,
-        version=1,
+        version=2,
         minor_version=1,
     )
     entry.add_to_hass(hass)
@@ -73,5 +73,5 @@ def mock_port_check() -> Generator[None]:
     """Pretend every port is free."""
     from unittest.mock import patch
 
-    with patch("custom_components.sip_assistant.config_flow._port_available", return_value=True):
+    with patch("custom_components.sip_assistant.validation.port_available", return_value=True):
         yield

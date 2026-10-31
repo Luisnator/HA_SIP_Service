@@ -22,16 +22,16 @@ async def async_get_config_entry_diagnostics(
     return {
         "data": async_redact_data(dict(entry.data), TO_REDACT),
         "options": async_redact_data(dict(entry.options), TO_REDACT),
-        "commands": [
-            {"title": subentry.title, **dict(subentry.data)}
-            for subentry in entry.subentries.values()
-        ],
         "sip_uri": await gateway.async_get_sip_uri(),
         "tts_engine": gateway.speech.resolve_engine(gateway.settings.tts_engine),
+        "assistants_with_web_search_and_home_access": [
+            assistant.name for assistant in gateway.settings.assistants if assistant.risky
+        ],
         "active_calls": [
             {
                 "call_id": session.call.call_id,
                 "phase": session.phase.value,
+                "assistant": session.assistant.name if session.assistant else None,
                 "codec": session.call.rtp.codec.encoding_name,
                 "rtp_port": session.call.rtp.local_port,
                 "started": session.started_at.isoformat(),

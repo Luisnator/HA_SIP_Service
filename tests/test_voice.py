@@ -11,22 +11,16 @@ from unittest.mock import patch
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
 
-from custom_components.sip_assistant.const import (
-    CONF_ENGINE,
-    CONF_START_MODE,
-    SECTION_ASSISTANT,
-    SECTION_CALL,
-)
+from custom_components.sip_assistant.const import Engine
+from custom_components.sip_assistant.texts import ENGLISH
 
+from .helpers import SENSOR, assistant, command, update_options, wait_for
 from .phone import FakePhone
-from .test_call import SENSOR, command, wait_for
 
 type Script = Callable[[web.WebSocketResponse], Awaitable[None]]
 
@@ -46,12 +40,28 @@ async def openai_server(socket_enabled: None) -> AsyncGenerator[dict[str, Any]]:
             state["done"].set()
         return ws
 
+    async def responses(request: web.Request) -> web.Response:
+        state.setdefault("responses", []).append(await request.json())
+        return web.json_response(
+            {
+                "output": [
+                    {"type": "web_search_call", "status": "completed"},
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": "Sunny, 21 degrees."}],
+                    },
+                ]
+            }
+        )
+
     app = web.Application()
     app.router.add_get("/v1/live/sessions", handler)
     app.router.add_get("/v1/realtime", handler)
+    app.router.add_post("/v1/responses", responses)
     server = TestServer(app, host="127.0.0.1")
     await server.start_server()
     state["base"] = f"ws://127.0.0.1:{server.port}"
+    state["http"] = f"http://127.0.0.1:{server.port}/v1"
     yield state
     await server.close()
 
@@ -82,27 +92,21 @@ def b64(data: bytes) -> str:
 
 
 async def _setup_assistant(
-    hass: HomeAssistant, entry: MockConfigEntry, engine: str, start_mode: str = "assistant"
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    engine: str,
+    start_mode: str = "assistant",
+    **profile: Any,
 ) -> list:
     assert await async_setup_component(hass, "llm", {})
-    hass.config_entries.async_update_entry(
+    profile_data = assistant("0", Engine(engine), **profile)
+    update_options(
+        hass,
         entry,
-        data={**entry.data, CONF_API_KEY: "sk-test"},
-        options={
-            **entry.options,
-            SECTION_CALL: {**entry.options[SECTION_CALL], CONF_START_MODE: start_mode},
-            SECTION_ASSISTANT: {**entry.options[SECTION_ASSISTANT], CONF_ENGINE: engine},
-        },
-    )
-    data = command("1", "Garage", description="Opens the garage")
-    hass.config_entries.async_add_subentry(
-        entry,
-        ConfigSubentry(
-            data=data["data"],
-            subentry_type=data["subentry_type"],
-            title=data["title"],
-            unique_id=None,
-        ),
+        api_key="sk-test",
+        assistants=[profile_data],
+        commands=[command("1", "Garage", description="Opens the garage")],
+        call={"start": profile_data["id"] if start_mode == "assistant" else "menu"},
     )
     calls = async_mock_service(hass, "script", "turn_on")
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -378,3 +382,142 @@ async def test_star_returns_to_menu_and_errors(
             await wait_for(lambda: connections == 2)
             await wait_for(lambda: hass.states.get(SENSOR).state == "menu")
             await phone.hang_up()
+
+
+async def test_live_web_search_without_home_access(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    sip_port: int,
+    openai_server: dict[str, Any],
+) -> None:
+    """A research profile gets hosted web search but no home tools."""
+    seen: dict[str, Any] = {}
+
+    async def script(ws: web.WebSocketResponse) -> None:
+        seen["start"] = await next_event(ws)
+        await ws.send_json({"type": "session.started", "session": {"id": "live_2"}})
+        event = await next_event(ws)
+        while event["type"] != "session.close":
+            event = await next_event(ws)
+        await ws.send_json({"type": "session.closed", "reason": "close_requested"})
+        await ws.close()
+
+    openai_server["script"] = script
+    with patch(
+        "custom_components.sip_assistant.voice.live.OPENAI_LIVE_URL",
+        f"{openai_server['base']}/v1/live/sessions",
+    ):
+        await _setup_assistant(
+            hass,
+            mock_config_entry,
+            "live",
+            web_search=True,
+            home_control=False,
+            phone_commands=False,
+        )
+        async with FakePhone(sip_port) as phone:
+            await phone.call()
+            await wait_for(lambda: "start" in seen)
+            await phone.hang_up()
+        await asyncio.wait_for(openai_server["done"].wait(), 5)
+
+    delegation = seen["start"]["session"]["delegation"]["responses"]
+    assert delegation["tools"] == [
+        {
+            "type": "function",
+            "name": "end_call",
+            "description": ENGLISH.end_call_description,
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {"type": "web_search"},
+    ]
+    assert ENGLISH.no_home_access in delegation["instructions"]
+    assert ENGLISH.web_search_hint in delegation["instructions"]
+
+
+async def test_realtime_web_search_and_fast_interrupt(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    sip_port: int,
+    openai_server: dict[str, Any],
+) -> None:
+    """Realtime searches through the Responses API and stops when the caller talks."""
+    seen: dict[str, Any] = {}
+    loud = asyncio.Event()
+
+    async def script(ws: web.WebSocketResponse) -> None:
+        seen["update"] = await next_event(ws)
+        await next_event(ws)  # greeting response.create
+        await ws.send_json(
+            {
+                "type": "response.output_item.done",
+                "response_id": "r1",
+                "item": {
+                    "type": "function_call",
+                    "call_id": "c1",
+                    "name": "web_search",
+                    "arguments": json.dumps({"query": "Weather in Berlin?"}),
+                },
+            }
+        )
+        await ws.send_json(
+            {"type": "response.done", "response": {"id": "r1", "status": "completed"}}
+        )
+        seen["search"] = await next_event(ws)
+        await next_event(ws)  # response.create
+
+        await ws.send_json({"type": "response.created", "response": {"id": "r2"}})
+        await ws.send_json(
+            {
+                "type": "response.output_audio.delta",
+                "response_id": "r2",
+                "item_id": "item2",
+                "delta": b64(b"\x33" * 24000),
+            }
+        )
+        loud.set()
+        seen["cancel"] = await next_event(ws)
+        seen["truncate"] = await next_event(ws)
+        while (await ws.receive()).type is WSMsgType.TEXT:
+            pass
+
+    openai_server["script"] = script
+    with (
+        patch(
+            "custom_components.sip_assistant.voice.realtime.OPENAI_REALTIME_URL",
+            f"{openai_server['base']}/v1/realtime",
+        ),
+        patch(
+            "custom_components.sip_assistant.voice.web_search.OPENAI_BASE_URL",
+            openai_server["http"],
+        ),
+    ):
+        await _setup_assistant(
+            hass, mock_config_entry, "realtime", web_search=True, home_control=False
+        )
+        async with FakePhone(sip_port) as phone:
+            await phone.call()
+            talker = asyncio.create_task(_talk(phone))
+            try:
+                await asyncio.wait_for(loud.wait(), 10)
+                await phone.received_audio(b"\x33" * 160)
+                talker.cancel()
+                phone.send_audio(frames=20, payload=b"\x00" * 160)  # caller talks loudly
+                await wait_for(lambda: "truncate" in seen)
+            finally:
+                talker.cancel()
+            await phone.hang_up()
+        await asyncio.wait_for(openai_server["done"].wait(), 5)
+
+    tools = {tool["name"]: tool for tool in seen["update"]["session"]["tools"]}
+    assert "web_search" in tools
+    (request,) = openai_server["responses"]
+    assert request["input"] == "Weather in Berlin?"
+    assert request["tools"] == [{"type": "web_search", "search_context_size": "low"}]
+    assert request["model"] == "gpt-6-luna"
+    assert json.loads(seen["search"]["item"]["output"]) == {"answer": "Sunny, 21 degrees."}
+
+    assert seen["cancel"] == {"type": "response.cancel"}
+    assert seen["truncate"]["type"] == "conversation.item.truncate"
+    assert seen["truncate"]["item_id"] == "item2"
+    assert seen["truncate"]["audio_end_ms"] < 3000

@@ -12,15 +12,19 @@ from homeassistant.helpers import llm
 from homeassistant.helpers.json import json_dumps
 import probatio
 
-from ..const import DOMAIN, LOGGER
-from ..settings import CommandConfig, Settings
+from ..const import DOMAIN, LOGGER, Engine
+from ..settings import AssistantProfile, CommandConfig, Settings
 from ..texts import Phrases
+from .web_search import async_web_search
 
 # Entities exposed to Assist are the ones the assistant may control.
 CONVERSATION_DOMAIN = "conversation"
 END_CALL_TOOL = "end_call"
+WEB_SEARCH_TOOL = "web_search"
 COMMAND_TOOL = "run_phone_command"
 _UNSUPPORTED_SCHEMA_KEYS = {"oneOf", "anyOf", "allOf", "enum", "not"}
+# Arguments of HassLightSet that map to mutually exclusive light.turn_on fields
+_EXCLUSIVE_COLOR_ARGS = {"color", "temperature"}
 
 
 def format_llm_tool(
@@ -33,12 +37,28 @@ def format_llm_tool(
     schema = {key: value for key, value in schema.items() if key not in _UNSUPPORTED_SCHEMA_KEYS}
     schema.setdefault("type", "object")
     schema.setdefault("properties", {})
+    description = tool.description or tool.name
+    if set(schema["properties"]) >= _EXCLUSIVE_COLOR_ARGS:
+        description += ". Set either color or temperature, never both."
     return {
         "type": "function",
         "name": tool.name,
-        "description": tool.description or tool.name,
+        "description": description,
         "parameters": schema,
     }
+
+
+def sanitize_arguments(args: dict[str, Any]) -> dict[str, Any]:
+    """Drop empty optional values and resolve conflicting color arguments.
+
+    Voice models sometimes send null for optional parameters, or both a color
+    and a color temperature, which light.turn_on rejects as exclusive.
+    """
+    args = {key: value for key, value in args.items() if value is not None and value != ""}
+    if set(args) >= _EXCLUSIVE_COLOR_ARGS:
+        LOGGER.debug("Dropping color temperature in favour of color %s", args["color"])
+        del args["temperature"]
+    return args
 
 
 class ToolBridge:
@@ -48,26 +68,35 @@ class ToolBridge:
         self,
         hass: HomeAssistant,
         settings: Settings,
+        profile: AssistantProfile,
         phrases: Phrases,
         *,
         on_end_call: Callable[[], None],
         run_command: Callable[[CommandConfig], Awaitable[None]],
     ) -> None:
-        """Initialize the bridge."""
+        """Initialize the bridge for one assistant profile."""
         self._hass = hass
         self._settings = settings
+        self._profile = profile
         self._phrases = phrases
         self._on_end_call = on_end_call
         self._run_command = run_command
         self._api: llm.APIInstance | None = None
         self.context = Context()
-        self._commands = {
-            command.name: command for command in settings.commands if command.ai_enabled
-        }
+        self._commands = (
+            {command.name: command for command in settings.commands if command.ai_enabled}
+            if profile.phone_commands
+            else {}
+        )
+
+    @property
+    def web_search_function(self) -> bool:
+        """Return True when web search runs as a local function tool."""
+        return self._profile.web_search and self._profile.engine is Engine.REALTIME
 
     async def async_setup(self) -> None:
-        """Load the configured Home Assistant LLM APIs."""
-        if not self._settings.llm_hass_api:
+        """Load the Home Assistant LLM APIs the profile may use."""
+        if not self._profile.home_control or not self._profile.llm_hass_api:
             return
         llm_context = llm.LLMContext(
             platform=DOMAIN,
@@ -78,10 +107,10 @@ class ToolBridge:
         )
         try:
             self._api = await llm.async_get_api(
-                self._hass, list(self._settings.llm_hass_api), llm_context
+                self._hass, list(self._profile.llm_hass_api), llm_context
             )
         except HomeAssistantError as err:
-            LOGGER.error("Could not load LLM API %s: %s", self._settings.llm_hass_api, err)
+            LOGGER.error("Could not load LLM API %s: %s", self._profile.llm_hass_api, err)
 
     @property
     def api_prompt(self) -> str:
@@ -120,6 +149,24 @@ class ToolBridge:
                     },
                 }
             )
+        if self.web_search_function:
+            tools.append(
+                {
+                    "type": "function",
+                    "name": WEB_SEARCH_TOOL,
+                    "description": self._phrases.web_search_description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": self._phrases.web_search_query,
+                            }
+                        },
+                        "required": ["query"],
+                    },
+                }
+            )
         tools.append(
             {
                 "type": "function",
@@ -138,11 +185,24 @@ class ToolBridge:
             return json_dumps({"error": "invalid_arguments", "error_text": str(err)})
         if not isinstance(args, dict):
             return json_dumps({"error": "invalid_arguments", "error_text": "Expected an object"})
+        args = sanitize_arguments(args)
         LOGGER.debug("Tool call %s(%s)", name, args)
 
         if name == END_CALL_TOOL:
             self._on_end_call()
             return json_dumps({"success": True})
+        if name == WEB_SEARCH_TOOL and self.web_search_function:
+            try:
+                answer = await async_web_search(
+                    self._hass,
+                    self._settings.api_key or "",
+                    self._profile.backend_model,
+                    str(args.get("query", "")),
+                    self._phrases.web_search_instructions,
+                )
+            except HomeAssistantError as err:
+                return json_dumps({"error": "web_search_failed", "error_text": str(err)})
+            return json_dumps({"answer": answer})
         if name == COMMAND_TOOL:
             command = self._commands.get(str(args.get("command")))
             if command is None:

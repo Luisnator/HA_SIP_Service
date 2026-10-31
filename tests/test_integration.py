@@ -9,7 +9,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 import wave
 
-from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import (
@@ -25,8 +25,6 @@ from custom_components.sip_assistant.const import (
     CONF_MAX_CALLS,
     CONF_TTS_ENGINE,
     DOMAIN,
-    SECTION_CALL,
-    SECTION_NETWORK,
 )
 from custom_components.sip_assistant.diagnostics import async_get_config_entry_diagnostics
 from custom_components.sip_assistant.rtp.g711 import Codec
@@ -35,8 +33,8 @@ from custom_components.sip_assistant.sip.sdp import parse_sdp
 from custom_components.sip_assistant.speech import SpeechRenderer
 from custom_components.sip_assistant.texts import ENGLISH
 
+from .helpers import SENSOR, command, setup, update_options, wait_for
 from .phone import FakePhone
-from .test_call import SENSOR, command, setup, wait_for
 
 
 def _wav(rate: int = 8000, samples: int = 800) -> bytes:
@@ -102,16 +100,10 @@ async def test_greeting_uses_tts(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, sip_port: int
 ) -> None:
     """The greeting is rendered as a template and spoken with the TTS engine."""
-    hass.config_entries.async_update_entry(
+    update_options(
+        hass,
         mock_config_entry,
-        options={
-            **mock_config_entry.options,
-            SECTION_CALL: {
-                **mock_config_entry.options[SECTION_CALL],
-                CONF_GREETING: "Hallo {{ caller_name }}",
-                CONF_TTS_ENGINE: "tts.piper",
-            },
-        },
+        call={CONF_GREETING: "Hallo {{ caller_name }}", CONF_TTS_ENGINE: "tts.piper"},
     )
     hass.config.components.add("tts")
     spoken: list[str] = []
@@ -151,16 +143,7 @@ async def test_settings_update_and_diagnostics(
     gateway = mock_config_entry.runtime_data
     server = gateway.server
 
-    data = command("5", "Licht")
-    hass.config_entries.async_add_subentry(
-        mock_config_entry,
-        ConfigSubentry(
-            data=data["data"],
-            subentry_type=data["subentry_type"],
-            title=data["title"],
-            unique_id=None,
-        ),
-    )
+    update_options(hass, mock_config_entry, commands=[command("5", "Licht")])
     await hass.async_block_till_done()
     assert mock_config_entry.runtime_data is gateway
     assert gateway.server is server
@@ -168,17 +151,12 @@ async def test_settings_update_and_diagnostics(
 
     diagnostics = await async_get_config_entry_diagnostics(hass, mock_config_entry)
     assert diagnostics["data"][CONF_API_KEY] == "**REDACTED**"
-    assert diagnostics["commands"][0]["title"] == "5 · Licht"
+    assert diagnostics["options"]["commands"][0]["name"] == "Licht"
+    assert diagnostics["assistants_with_web_search_and_home_access"] == []
     assert diagnostics["sip_uri"].startswith("sip:homeassistant@")
     assert hass.states.get("sensor.sip_assistant_sip_address").state == diagnostics["sip_uri"]
 
-    hass.config_entries.async_update_entry(
-        mock_config_entry,
-        options={
-            **mock_config_entry.options,
-            SECTION_NETWORK: {**mock_config_entry.options[SECTION_NETWORK], CONF_MAX_CALLS: 3},
-        },
-    )
+    update_options(hass, mock_config_entry, network={CONF_MAX_CALLS: 3})
     await hass.async_block_till_done()
     assert mock_config_entry.state is ConfigEntryState.LOADED
     assert mock_config_entry.runtime_data is not gateway
@@ -216,15 +194,7 @@ async def test_info_dtmf_reinvite_and_actions(
             ],
         },
     )
-    hass.config_entries.async_add_subentry(
-        mock_config_entry,
-        ConfigSubentry(
-            data=data["data"],
-            subentry_type=data["subentry_type"],
-            title=data["title"],
-            unique_id=None,
-        ),
-    )
+    update_options(hass, mock_config_entry, commands=[data])
     executed = async_capture_events(hass, f"{DOMAIN}_command_executed")
     await setup(hass, mock_config_entry)
 
@@ -299,7 +269,7 @@ async def test_tool_bridge_calls_home_assistant_tools(hass: HomeAssistant) -> No
     """Home Assistant LLM tools run through the bridge and errors are reported."""
     from homeassistant.setup import async_setup_component
 
-    from custom_components.sip_assistant.settings import Settings
+    from custom_components.sip_assistant.settings import AssistantProfile, Settings
     from custom_components.sip_assistant.voice.tools import ToolBridge
 
     assert await async_setup_component(hass, "llm", {})
@@ -310,7 +280,8 @@ async def test_tool_bridge_calls_home_assistant_tools(hass: HomeAssistant) -> No
 
     bridge = ToolBridge(
         hass,
-        Settings(llm_hass_api=("assist",), language="en"),
+        Settings(language="en"),
+        AssistantProfile(id="a", name="Assistant", code="0", phone_commands=False),
         ENGLISH,
         on_end_call=end_call,
         run_command=run_command,
@@ -324,3 +295,44 @@ async def test_tool_bridge_calls_home_assistant_tools(hass: HomeAssistant) -> No
     assert "invalid_arguments" in await bridge.async_call("end_call", "{nope")
     assert "success" in await bridge.async_call("end_call", None)
     end_call.assert_called_once()
+
+
+def test_sanitize_arguments() -> None:
+    """Null values are dropped and color wins over color temperature."""
+    from custom_components.sip_assistant.voice.tools import sanitize_arguments
+
+    assert sanitize_arguments(
+        {"name": "Flur", "color": "red", "temperature": 2700, "brightness": None, "area": ""}
+    ) == {"name": "Flur", "color": "red"}
+    assert sanitize_arguments({"name": "Flur", "temperature": 2700}) == {
+        "name": "Flur",
+        "temperature": 2700,
+    }
+
+
+async def test_light_color_tool_hint(hass: HomeAssistant) -> None:
+    """The light tool tells the model not to combine color and temperature."""
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+    from homeassistant.helpers import llm
+    from homeassistant.setup import async_setup_component
+
+    from custom_components.sip_assistant.voice.tools import format_llm_tool
+
+    for domain in ("homeassistant", "intent", "llm", "light"):
+        assert await async_setup_component(hass, domain, {})
+    hass.states.async_set(
+        "light.flur",
+        "on",
+        {"friendly_name": "Flur", "supported_color_modes": ["rgb", "color_temp"]},
+    )
+    async_expose_entity(hass, "conversation", "light.flur", True)
+    api = await llm.async_get_api(
+        hass,
+        "assist",
+        llm.LLMContext(
+            platform="test", context=None, language="en", assistant="conversation", device_id=None
+        ),
+    )
+    tool = next(tool for tool in api.tools if tool.name.endswith("HassLightSet"))
+    spec = format_llm_tool(tool, api.custom_serializer)
+    assert spec["description"].endswith("Set either color or temperature, never both.")

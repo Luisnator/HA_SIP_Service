@@ -17,9 +17,10 @@ from homeassistant.helpers.json import json_dumps
 
 from ..const import LOGGER
 from ..rtp.session import RtpSession
-from ..settings import Settings
+from ..settings import AssistantProfile, Settings
 from ..sip.call import SipCall
 from ..texts import Phrases
+from .barge_in import SpeechDetector
 from .tools import ToolBridge
 
 CONNECT_TIMEOUT = 15
@@ -42,6 +43,7 @@ class AgentContext:
 
     hass: HomeAssistant
     settings: Settings
+    profile: AssistantProfile
     phrases: Phrases
     call: SipCall
     tools: ToolBridge
@@ -59,6 +61,7 @@ class VoiceAgent(ABC):
         """Initialize the agent."""
         self.context = context
         self.settings = context.settings
+        self.profile = context.profile
         self.rtp: RtpSession = context.call.rtp
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._ready = asyncio.Event()
@@ -67,6 +70,7 @@ class VoiceAgent(ABC):
         self._tasks: set[asyncio.Task[Any]] = set()
         self._hangup_requested = False
         self._last_audio_out = 0.0
+        self._speech = SpeechDetector(self.rtp.codec) if self.profile.fast_interrupt else None
 
     @property
     @abstractmethod
@@ -188,6 +192,13 @@ class VoiceAgent(ABC):
         if self._audio_in.full():
             self._audio_in.get_nowait()
         self._audio_in.put_nowait(payload)
+        if self._speech is not None and self._speech.feed(payload) and self.rtp.is_playing:
+            self._create_task(self._on_caller_speech(), "barge-in")
+
+    async def _on_caller_speech(self) -> None:
+        """The caller talks over the assistant: stop playback right away."""
+        LOGGER.debug("Caller interrupted the assistant (%s ms queued)", self.rtp.queued_ms)
+        self.rtp.clear()
 
     async def _send_audio_loop(self) -> None:
         await self._ready.wait()

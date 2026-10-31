@@ -14,7 +14,6 @@ class Phrases:
     wrong_pin: str
     pin_locked: str
     menu_item: str
-    menu_assistant: str
     menu_repeat: str
     menu_empty: str
     unknown_code: str
@@ -36,6 +35,12 @@ class Phrases:
     backend_rules: str
     end_call_description: str
     command_tool_description: str
+    assistant_name: str
+    no_home_access: str
+    web_search_hint: str
+    web_search_description: str
+    web_search_query: str
+    web_search_instructions: str
 
 
 GERMAN = Phrases(
@@ -44,7 +49,6 @@ GERMAN = Phrases(
     wrong_pin="Die PIN ist leider falsch.",
     pin_locked="Zu viele Fehlversuche. Auf Wiederhören.",
     menu_item="Für {name} drücke {code}.",
-    menu_assistant="Für den Sprachassistenten drücke {code}.",
     menu_repeat="Mit der Sterntaste hörst du das Menü erneut.",
     menu_empty="Es sind noch keine Tastenbefehle eingerichtet.",
     unknown_code="Den Code {code} kenne ich nicht.",
@@ -78,9 +82,9 @@ GERMAN = Phrases(
         "kannst. Warte danach auf seine Antwort."
     ),
     live_delegation_rules=(
-        "Gib alle Anfragen zum Zuhause (Geräte, Zustände, Aktionen, Befehle) "
-        "sowie den Wunsch aufzulegen an das Backend weiter und erfinde keine "
-        "Ergebnisse."
+        "Gib alle Anfragen, für die Werkzeuge, aktuelle Informationen oder "
+        "Aktionen nötig sind, sowie den Wunsch aufzulegen an das Backend weiter "
+        "und erfinde keine Ergebnisse."
     ),
     backend_rules=(
         "Du unterstützt einen Sprachassistenten in einem laufenden Telefonat. "
@@ -95,6 +99,25 @@ GERMAN = Phrases(
         "oder der Anrufer ausdrücklich auflegen möchte."
     ),
     command_tool_description="Führt einen eingerichteten Telefon-Befehl aus.",
+    assistant_name="Sprachassistent",
+    no_home_access=(
+        "Du hast in diesem Gespräch keinen Zugriff auf Geräte oder Funktionen im "
+        "Haus. Möchte der Anrufer etwas steuern, erkläre kurz, dass das hier nicht "
+        "möglich ist."
+    ),
+    web_search_hint=(
+        "Für aktuelle Informationen wie Nachrichten, Wetter oder Öffnungszeiten "
+        "nutze die Websuche und nenne keine URLs."
+    ),
+    web_search_description=(
+        "Sucht im Internet nach aktuellen Informationen und liefert eine kurze Zusammenfassung."
+    ),
+    web_search_query="Wonach gesucht werden soll, als vollständige Frage.",
+    web_search_instructions=(
+        "Beantworte die Frage mithilfe der Websuche in höchstens drei kurzen "
+        "Sätzen auf Deutsch. Der Text wird am Telefon vorgelesen: keine URLs, "
+        "kein Markdown, keine Quellenangaben."
+    ),
 )
 
 ENGLISH = Phrases(
@@ -103,7 +126,6 @@ ENGLISH = Phrases(
     wrong_pin="That PIN is not correct.",
     pin_locked="Too many failed attempts. Goodbye.",
     menu_item="For {name}, press {code}.",
-    menu_assistant="For the voice assistant, press {code}.",
     menu_repeat="Press star to hear this menu again.",
     menu_empty="No keypad commands have been set up yet.",
     unknown_code="I don't know the code {code}.",
@@ -134,8 +156,8 @@ ENGLISH = Phrases(
         "Greet the caller now in English and ask how you can help. Then pause and listen."
     ),
     live_delegation_rules=(
-        "Delegate every request about the home (devices, states, actions, "
-        "commands) and the wish to hang up to the backend, and never make up "
+        "Delegate every request that needs tools, current information or "
+        "actions, and the wish to hang up, to the backend, and never make up "
         "results."
     ),
     backend_rules=(
@@ -150,6 +172,22 @@ ENGLISH = Phrases(
         "caller explicitly wants to hang up."
     ),
     command_tool_description="Runs one of the configured phone commands.",
+    assistant_name="Voice assistant",
+    no_home_access=(
+        "You have no access to devices or functions of the home in this call. If "
+        "the caller wants to control something, briefly explain that this is not "
+        "possible here."
+    ),
+    web_search_hint=(
+        "Use web search for current information such as news, weather or opening "
+        "hours, and never read out URLs."
+    ),
+    web_search_description="Searches the web for current information and returns a short summary.",
+    web_search_query="What to search for, phrased as a complete question.",
+    web_search_instructions=(
+        "Answer the question using web search in at most three short sentences. "
+        "The text is read out on the phone: no URLs, no Markdown, no citations."
+    ),
 )
 
 

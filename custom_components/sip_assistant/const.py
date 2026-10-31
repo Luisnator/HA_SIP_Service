@@ -11,29 +11,32 @@ LOGGER = logging.getLogger(__package__)
 
 DEFAULT_NAME: Final = "SIP Assistant"
 
-# Config entry data (changed through the reconfigure flow)
+# Config entry layout version (2: commands and assistant profiles in options)
+CONFIG_VERSION: Final = 2
+
+# Config entry data (connection settings)
 CONF_SIP_PORT: Final = "sip_port"
 CONF_SIP_USER: Final = "sip_user"
 CONF_SIP_PASSWORD: Final = "sip_password"  # noqa: S105
 
 # Option sections
 SECTION_CALL: Final = "call"
-SECTION_ASSISTANT: Final = "assistant"
 SECTION_NETWORK: Final = "network"
+SECTION_COMMANDS: Final = "commands"
+SECTION_ASSISTANTS: Final = "assistants"
 
 # Call flow options
-CONF_START_MODE: Final = "start_mode"
+CONF_START: Final = "start"  # "menu" or the id of an assistant profile
 CONF_GREETING: Final = "greeting"
 CONF_ANNOUNCE_MENU: Final = "announce_menu"
 CONF_MENU_PROMPT: Final = "menu_prompt"
-CONF_ASSISTANT_CODE: Final = "assistant_code"
 CONF_PIN: Final = "pin"
 CONF_TTS_ENGINE: Final = "tts_engine"
 CONF_LANGUAGE: Final = "language"
 CONF_DIGIT_TIMEOUT: Final = "digit_timeout"
 CONF_MAX_CALL_DURATION: Final = "max_call_duration"
 
-# Assistant options
+# Assistant profiles
 CONF_ENGINE: Final = "engine"
 CONF_VOICE: Final = "voice"
 CONF_PROMPT: Final = "prompt"
@@ -42,6 +45,10 @@ CONF_LIVE_MODEL: Final = "live_model"
 CONF_BACKEND_MODEL: Final = "backend_model"
 CONF_REASONING_EFFORT: Final = "reasoning_effort"
 CONF_REALTIME_MODEL: Final = "realtime_model"
+CONF_HOME_CONTROL: Final = "home_control"
+CONF_PHONE_COMMANDS: Final = "phone_commands"
+CONF_WEB_SEARCH: Final = "web_search"
+CONF_FAST_INTERRUPT: Final = "fast_interrupt"
 
 # Network options
 CONF_ALLOWED_NETWORKS: Final = "allowed_networks"
@@ -50,8 +57,8 @@ CONF_RTP_PORT_END: Final = "rtp_port_end"
 CONF_EXTERNAL_HOST: Final = "external_host"
 CONF_MAX_CALLS: Final = "max_calls"
 
-# Command subentries
-SUBENTRY_COMMAND: Final = "command"
+# Keypad commands (and fields shared with assistant profiles)
+CONF_ID: Final = "id"
 CONF_CODE: Final = "code"
 CONF_ACTION_TYPE: Final = "action_type"
 CONF_ACTIONS: Final = "actions"
@@ -59,13 +66,6 @@ CONF_RESPONSE: Final = "response"
 CONF_AI_ENABLED: Final = "ai_enabled"
 CONF_ANNOUNCE: Final = "announce"
 CONF_DESCRIPTION: Final = "description"
-
-
-class StartMode(StrEnum):
-    """What a caller hears first."""
-
-    MENU = "menu"
-    ASSISTANT = "assistant"
 
 
 class Engine(StrEnum):
@@ -117,7 +117,7 @@ SIGNAL_EVENT: Final = f"{DOMAIN}_event_{{}}"
 # Defaults
 DEFAULT_SIP_PORT: Final = 5060
 DEFAULT_SIP_USER: Final = "homeassistant"
-DEFAULT_START_MODE: Final = StartMode.MENU
+START_MENU: Final = "menu"
 DEFAULT_ASSISTANT_CODE: Final = "0"
 DEFAULT_DIGIT_TIMEOUT: Final = 3.0
 DEFAULT_MAX_CALL_DURATION: Final = 15  # minutes
@@ -150,6 +150,12 @@ REALTIME_VOICES: Final = [
     "shimmer",
     "verse",
 ]
+
+# Sidebar panel
+PANEL_URL_PATH: Final = "sip-assistant"
+PANEL_COMPONENT: Final = "sip-assistant-panel"
+PANEL_ICON: Final = "mdi:phone-voip"
+STATIC_URL_PATH: Final = "/sip_assistant_static"
 
 OPENAI_BASE_URL: Final = "https://api.openai.com/v1"
 OPENAI_LIVE_URL: Final = "wss://api.openai.com/v1/live/sessions"

@@ -1,118 +1,147 @@
-# SIP Assistant für Home Assistant
+# SIP Assistant for Home Assistant
 
-Ruf dein Zuhause an: Diese Integration macht Home Assistant zu einem SIP-Telefon-Endpunkt.
-Per **Tastenmenü (DTMF)** startest du Skripte, Automationen und Szenen, und auf Knopfdruck
-sprichst du mit einem **KI-Sprachassistenten** (OpenAI GPT-Live oder Realtime-API), der
-dein Haus über die Assist-Werkzeuge von Home Assistant steuert.
+Call your home: this integration turns Home Assistant into a SIP endpoint. Use the
+**keypad (DTMF)** to run scripts, automations and scenes, and talk to **voice assistants**
+(OpenAI GPT-Live or the Realtime API) that control your home through Home Assistant's
+Assist tools, all configured in a dedicated sidebar panel.
 
-- 📞 Eigener SIP-Server (UDP) für Direktanrufe per IP – Softphone, SIP-Tischtelefon oder Analog-Telefonadapter
-- 🔢 Tastenbefehle bequem in der UI anlegen: Skript/Automation/Szene/Button, Entität umschalten,
-  eigene Aktionen oder Ansagen (z. B. Sensorwerte per Template)
-- 🗣️ Sprachassistent mit OpenAI **GPT-Live** (`gpt-live-1`, vollduplex) oder der **Realtime-API**
-  (`gpt-realtime-2.1` / `gpt-realtime-mini`), Audio wird verlustfrei als G.711 durchgereicht
-- 🏠 Der Assistent nutzt die Assist-API (nur für Assist freigegebene Entitäten) und deine Tastenbefehle
-- 🔐 PIN-Abfrage, SIP-Digest-Authentifizierung, Netzwerkfreigaben, maximale Gesprächsdauer
-- 📊 Entitäten für Anrufstatus, letzten Anrufer, Anruf-Ereignisse und einen Auflegen-Button
-- 🌍 Deutsch und Englisch, Ansagen über die TTS-Engine deiner Wahl (Töne als Fallback)
+- 📞 Built-in SIP server (UDP) for direct calls by IP from softphones, SIP desk phones or
+  analog telephone adapters
+- 🔢 Keypad commands: run a script, automation, scene or button, toggle an entity, run
+  custom actions or speak a template (e.g. a sensor value)
+- 🗣️ Multiple voice assistants, each on its own key, with its own model, voice,
+  instructions and permissions (device control, keypad commands, web search)
+- ⚡ Fast interruption: the assistant stops as soon as the caller talks over it
+- 🖥️ Configuration panel in the sidebar built from Home Assistant's own components
+  (entity picker, action editor, template editor), with live status and setup checks
+- 🔐 PIN, SIP digest authentication, network allow list and a maximum call duration
+- 📊 Entities for call state, last caller, call events and a hang-up button
+- 🌍 English and German, announcements through the text-to-speech engine of your choice
+  (tones as a fallback)
 
-## Voraussetzungen
+## Requirements
 
-- Home Assistant **2026.10** oder neuer (HA OS, Supervised, Container oder Core)
-- Für Ansagen eine TTS-Engine (z. B. Piper, Google Translate, Home Assistant Cloud) – ohne TTS
-  werden Signaltöne gespielt
-- Für den Sprachassistenten ein OpenAI-API-Key (<https://platform.openai.com/api-keys>)
-- Netzwerk: UDP-Port für SIP (Standard 5060) und ein UDP-Portbereich für Audio (Standard
-  10000–10100) müssen am Home-Assistant-Host erreichbar sein. Bei **Docker** den Container mit
-  `network_mode: host` betreiben.
+- Home Assistant **2026.10** or newer (OS, Supervised, Container or Core)
+- A text-to-speech engine for announcements (e.g. Piper, Google Translate, Home Assistant
+  Cloud). Without one, tones are played instead.
+- An OpenAI API key for the voice assistants (<https://platform.openai.com/api-keys>)
+- Network: the SIP port (UDP, default 5060) and a UDP port range for audio (default
+  10000–10100) must be reachable on the Home Assistant host. With **Docker**, run the
+  container with `network_mode: host`.
 
-> Die eingebaute HA-Integration **Voice over IP** nutzt ebenfalls Port 5060. Ist sie aktiv, wähle
-> hier einen anderen Port (z. B. 5070). Die Einrichtung erkennt belegte Ports.
+> The built-in **Voice over IP** integration also uses port 5060 by default. If you use it,
+> pick another port for SIP Assistant (e.g. 5070). The setup detects ports that are in use.
 
 ## Installation
 
-### HACS (empfohlen)
+### HACS (recommended)
 
-1. HACS → ⋮ → *Benutzerdefinierte Repositories* → `https://github.com/Luisnator/HA_SIP_Service`,
-   Typ *Integration*.
-2. „SIP Assistant“ installieren und Home Assistant neu starten.
+1. HACS → ⋮ → *Custom repositories* → `https://github.com/Luisnator/HA_SIP_Service`,
+   type *Integration*.
+2. Install **SIP Assistant** and restart Home Assistant.
 
-### Manuell
+### Manual
 
-Den Ordner `custom_components/sip_assistant` nach `<config>/custom_components/` kopieren und
-Home Assistant neu starten.
+Copy `custom_components/sip_assistant` to `<config>/custom_components/` and restart
+Home Assistant.
 
-## Einrichtung
+## Setup
 
-**Einstellungen → Geräte & Dienste → Integration hinzufügen → SIP Assistant**
+**Settings → Devices & services → Add integration → SIP Assistant**
 
-1. **Telefonanschluss** – Port, SIP-Benutzer (z. B. `homeassistant`) und optional ein Passwort.
-   Mit Passwort müssen sich Telefone per Digest-Authentifizierung anmelden.
-2. **Sprachassistent** – optional den OpenAI-API-Key eintragen und das Modell wählen. Ohne Key
-   funktioniert alles außer dem Sprachassistenten; der Key lässt sich später über
-   *Neu konfigurieren* ergänzen.
+1. **Phone connection**: port, SIP user (e.g. `homeassistant`) and an optional password.
+   With a password, phones have to authenticate with digest authentication.
+2. **Voice assistant**: optionally enter the OpenAI API key and pick the default model. You
+   can add or change the key later in the panel.
 
-Danach zeigt der Sensor **SIP-Adresse** die Adresse zum Anrufen, z. B. `sip:homeassistant@192.168.1.10`.
+A default assistant on key `0` with access to your home is created. Everything else is
+configured in the **SIP Assistant** panel in the sidebar (admins only). The *Configure*
+button on the integration page opens it as well.
 
-### Tastenbefehle anlegen
+## The configuration panel
 
-Auf der Integrationsseite **Tastenbefehl hinzufügen** wählen:
-
-| Typ | Beschreibung |
+| Tab | What you can do |
 | --- | --- |
-| Entität ausführen | Skripte und Szenen starten, Automationen auslösen, Buttons drücken, Licht/Schalter/Lüfter/Abdeckung/Input-Boolean umschalten |
-| Eigene Aktionen | Beliebige Aktionen mit dem Aktionseditor (wie in einem Skript). Variablen: `caller`, `caller_name`, `code` |
-| Text ansagen | Ein Template vorlesen, z. B. `Draußen sind es {{ states('sensor.aussentemperatur') }} Grad.` |
+| **Overview** | Live call state, the SIP address to dial (with copy button), last caller, a hang-up button, the complete keypad layout and checks such as a missing API key, missing TTS or risky assistant settings |
+| **Keypad commands** | Create commands with a code, pick what they do, set a spoken confirmation and decide whether they are announced and whether assistants may run them |
+| **Assistants** | Create voice assistant profiles, each with its own key, model, voice, instructions and permissions |
+| **Call flow** | Start with the keypad menu or directly with an assistant, greeting, menu announcement, PIN, TTS engine, language, digit timeout and maximum call duration |
+| **Connection** | SIP port, user and password, OpenAI API key, allowed networks, RTP port range, advertised address and number of simultaneous calls |
 
-Jeder Befehl hat einen **Code** (1–8 Zeichen aus `0–9` und `A–D`), eine optionale gesprochene
-Bestätigung und zwei Schalter: *in der Menüansage nennen* und *Sprachassistent darf ihn ausführen*.
+Changes to commands, assistants and the call flow apply to the next call without
+interrupting running calls. Changing the SIP connection or network settings restarts the
+SIP server.
 
-### Optionen
+### Keypad commands
 
-Unter **Konfigurieren** gibt es drei Abschnitte:
-
-- **Anrufablauf**: Start im Tastenmenü oder direkt beim Assistenten, Begrüßung (Template),
-  Menüansage (automatisch oder eigener Text), Taste für den Assistenten (Standard `0`), PIN,
-  TTS-Engine, Sprache, Wartezeit für mehrstellige Codes, maximale Gesprächsdauer.
-- **Sprachassistent**: Modell (GPT-Live oder Realtime), Stimme, Anweisungen (Template),
-  welche Home-Assistant-APIs genutzt werden dürfen (Standard: Assist), Modelle und Denkaufwand.
-- **Netzwerk und Sicherheit**: erlaubte Netzwerke (Standard: private Netze), RTP-Portbereich,
-  angekündigte Adresse (nur hinter NAT nötig), gleichzeitige Anrufe.
-
-Änderungen an Befehlen und am Anrufablauf gelten sofort für neue Anrufe, ohne laufende Gespräche
-zu unterbrechen. Änderungen am SIP-/Netzwerkteil starten den SIP-Server neu.
-
-## Bedienung am Telefon
-
-1. Begrüßung, ggf. PIN-Eingabe (abschließen mit `#`)
-2. Menüansage – jede Taste unterbricht die Ansage
-3. Code eingeben: eindeutige Codes werden sofort ausgeführt, sonst nach der Wartezeit oder mit `#`
-4. `*` wiederholt das Menü, die Assistenten-Taste (Standard `0`) verbindet mit der KI
-5. Im Gespräch mit der KI bringt `*` dich zurück ins Menü; „Tschüss“ beendet den Anruf
-
-### Softphone einrichten
-
-- **Linphone, MicroSIP**: ohne Konto einfach `sip:homeassistant@<HA-IP>` wählen (bei anderem
-  Port mit `:5070` usw.).
-- **Mit Passwort oder Apps, die ein Konto verlangen (z. B. Zoiper)**: ein SIP-Konto anlegen –
-  Benutzer = SIP-Benutzer, Domain/Server = `<HA-IP>:<Port>`, Transport UDP. Der SIP Assistant
-  nimmt die Registrierung an; anschließend den SIP-Benutzer anrufen.
-- **Codecs**: G.711 A-law (PCMA) und µ-law (PCMU), DTMF per RFC 4733 („RFC2833“) oder SIP INFO.
-  SRTP/verschlüsselte Medien werden nicht unterstützt – im LAN unkritisch, für Anrufe aus dem
-  Internet einen VPN-Zugang nutzen.
-
-## Automationen
-
-Jedes Ereignis erscheint an der Entität **Anruf** (`event.sip_assistant_call`) und zusätzlich als
-Bus-Event `sip_assistant_<typ>`:
-
-| Ereignis | Daten |
+| Type | Description |
 | --- | --- |
-| `call_started`, `call_ended` | `caller`, `caller_name`, `caller_address`, `call_id`, bei Ende `reason`, `duration` |
-| `code_entered` | `code`, `command` (oder `null` für unbekannte Codes) |
+| Run an entity | Start a script or scene, trigger an automation, press a button or toggle a light, switch, fan, cover or input boolean |
+| Custom actions | Any sequence built with the action editor. The variables `caller`, `caller_name` and `code` are available |
+| Speak a text | Read out a template, e.g. `It is {{ states('sensor.outdoor_temperature') }} degrees outside.` |
+
+Codes are 1–8 characters from `0–9` and `A–D`; `*` and `#` are reserved.
+
+### Assistant profiles
+
+Every assistant answers on its own key, so you can offer different assistants for
+different purposes, for example:
+
+| Key | Assistant | Device control | Keypad commands | Web search |
+| --- | --- | --- | --- | --- |
+| `0` | Home | ✅ | ✅ | ❌ |
+| `1` | Research | ❌ | ❌ | ✅ |
+
+Per profile you choose:
+
+- **Model**: *GPT-Live* (full-duplex voice model that hands tool use to a fast backend
+  model) or the *Realtime API* (one speech-to-speech model that uses the tools itself)
+- **Voice** and **instructions** (templates with `caller` and `caller_name` are supported)
+- **Control devices** through the selected Home Assistant APIs (*Assist* only sees
+  entities exposed to Assist)
+- **Run keypad commands** that allow it
+- **Web search** for current information. GPT-Live uses OpenAI's hosted web search in its
+  backend; the Realtime API calls a web search function that uses the Responses API.
+- **Fast interruption** (on by default): the integration detects the caller talking over
+  the assistant on the phone line and stops playback immediately instead of waiting for
+  OpenAI's turn detection. Turn it off if background noise cuts the assistant off.
+
+If a profile combines web search with device control or keypad commands, the panel shows a
+warning: web pages can contain hidden instructions (prompt injection) that try to make the
+assistant act in your home.
+
+## Using the phone
+
+1. Greeting, then the PIN if one is set (finish with `#`)
+2. Menu announcement; any key interrupts it
+3. Enter a code: unique codes run immediately, otherwise after the digit timeout or `#`
+4. `*` repeats the menu; an assistant's key connects you to that assistant
+5. During a conversation, `*` returns to the menu; saying goodbye ends the call
+
+### Softphone setup
+
+- **Linphone, MicroSIP**: dial `sip:homeassistant@<home-assistant-ip>` without an account
+  (append `:5070` etc. for another port).
+- **With a password, or apps that require an account (e.g. Zoiper)**: create a SIP account
+  with the SIP user as username and `<home-assistant-ip>:<port>` as domain/server over UDP.
+  SIP Assistant accepts the registration; then call the SIP user.
+- **Codecs and DTMF**: G.711 A-law (PCMA) and µ-law (PCMU); DTMF via RFC 4733 ("RFC 2833")
+  or SIP INFO. SRTP is not supported; use a VPN for calls from outside your network.
+
+## Automations
+
+Every event is shown on the **Call** event entity (`event.sip_assistant_call`) and fired on
+the event bus as `sip_assistant_<type>`:
+
+| Event | Data |
+| --- | --- |
+| `call_started`, `call_ended` | `caller`, `caller_name`, `caller_address`, `call_id`; on end also `reason` and `duration` |
+| `code_entered` | `code`, `command` (`null` for unknown codes) |
 | `command_executed` | `code`, `command`, `success` |
-| `assistant_started`, `pin_failed`, `call_rejected` | Anruferdaten bzw. `reason` |
+| `assistant_started` | caller data, `assistant`, `assistant_id` |
+| `pin_failed`, `call_rejected` | caller data or `reason` |
 
-Beispiel – beliebige Codes ohne eigenen Tastenbefehl auswerten:
+Example: react to a code that has no keypad command:
 
 ```yaml
 triggers:
@@ -123,21 +152,20 @@ triggers:
 actions:
   - action: lock.unlock
     target:
-      entity_id: lock.haustuer
+      entity_id: lock.front_door
 ```
 
-## Sicherheit und Datenschutz
+## Security and privacy
 
-- Standardmäßig dürfen nur private Netze anrufen. Leite den SIP-Port **nicht** ungeschützt ins
-  Internet weiter.
-- Setze ein SIP-Passwort und/oder eine PIN, besonders wenn Befehle Türen oder Alarmanlagen
-  steuern.
-- Der Assistent sieht nur Entitäten, die für Assist freigegeben sind
-  (*Einstellungen → Sprachassistenten → Entitäten freigeben*).
-- Audio wird nur während der Assistenten-Phase an OpenAI übertragen, nicht im Tastenmenü.
-- Die maximale Gesprächsdauer beendet jeden Anruf nach der eingestellten Zeit.
+- By default only private networks may call. Do **not** forward the SIP port to the
+  internet without protection.
+- Set a SIP password and/or a PIN, especially when commands control doors or alarms.
+- Assistants only see entities exposed to Assist
+  (*Settings → Voice assistants → Expose*), and only when *Control devices* is enabled.
+- Audio is sent to OpenAI only while an assistant is active, never in the keypad menu.
+- The maximum call duration ends every call after the configured time.
 
-## Fehlersuche
+## Troubleshooting
 
 ```yaml
 logger:
@@ -145,15 +173,19 @@ logger:
     custom_components.sip_assistant: debug
 ```
 
-- **Kein Ton / einseitiges Audio**: RTP-Portbereich in der Firewall freigeben; bei Docker
-  `network_mode: host`; hinter NAT die angekündigte Adresse setzen.
-- **Tasten werden nicht erkannt**: Im Softphone DTMF-Modus „RFC 2833/4733“ oder „SIP INFO“ wählen
-  (In-Band-DTMF wird nicht ausgewertet).
-- **Setup schlägt fehl, Port belegt**: anderen SIP-Port wählen (z. B. wegen der VoIP-Integration).
-- Die Diagnose-Datei (Integrationsseite → ⋮ → Diagnose herunterladen) enthält Einstellungen ohne
-  Passwörter/Keys und die aktiven Anrufe.
+- **No audio or one-way audio**: open the RTP port range in your firewall; use
+  `network_mode: host` with Docker; set the advertised address behind NAT.
+- **Keys are not recognised**: set the softphone's DTMF mode to "RFC 2833/4733" or
+  "SIP INFO" (in-band DTMF is not evaluated).
+- **The assistant cuts itself off**: turn off *Fast interruption* for that assistant.
+- **Setup fails because the port is in use**: choose another SIP port, e.g. when the Voice
+  over IP integration is active.
+- The diagnostics download (integration page → ⋮ → Download diagnostics) contains the
+  settings without passwords or keys, and the active calls.
 
-## Entwicklung
+## Development
+
+Backend:
 
 ```bash
 uv venv --python 3.14 .venv
@@ -162,12 +194,23 @@ uv pip install --python .venv/bin/python -r requirements_test.txt
 .venv/bin/ruff check custom_components tests
 ```
 
-Aufbau:
+Panel (TypeScript and Lit, bundled into
+`custom_components/sip_assistant/frontend/sip-assistant-panel.js`, which is committed so
+HACS installs work without a build step):
 
-| Pfad | Inhalt |
+```bash
+cd frontend
+npm ci
+npm run typecheck
+npm run build
+```
+
+| Path | Contents |
 | --- | --- |
-| `sip/` | SIP-Parser, SDP, Digest-Auth und der UDP-Server (Transaktionen, Dialoge, Registrar) |
-| `rtp/` | RTP-Pakete, getaktete Audiosession, G.711, DTMF (RFC 4733/INFO), Signaltöne |
-| `call_session.py` | Ablauf eines Anrufs: Begrüßung, PIN, Tastenmenü, Assistent |
-| `voice/` | GPT-Live- und Realtime-Agenten sowie die Brücke zu den HA-LLM-Werkzeugen |
-| `config_flow.py` | Einrichtung, Optionen und Tastenbefehle (Config-Subentries) |
+| `custom_components/sip_assistant/sip/` | SIP parser, SDP, digest authentication and the UDP server (transactions, dialogs, registrar) |
+| `custom_components/sip_assistant/rtp/` | RTP packets, paced audio session, G.711, DTMF (RFC 4733 and INFO), tones |
+| `custom_components/sip_assistant/call_session.py` | What happens during a call: greeting, PIN, keypad menu, assistants |
+| `custom_components/sip_assistant/voice/` | GPT-Live and Realtime agents, Home Assistant tool bridge, web search, fast interruption |
+| `custom_components/sip_assistant/websocket.py`, `panel.py` | Panel registration and its admin-only websocket API |
+| `custom_components/sip_assistant/validation.py`, `defaults.py` | Validation shared by the config flow and the panel, defaults and migration |
+| `frontend/` | Source of the configuration panel |

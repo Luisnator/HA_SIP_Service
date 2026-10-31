@@ -18,7 +18,7 @@
       },
       "assistant": {
         "title": "Sprachassistent",
-        "description": "Verbinde optional den OpenAI-Sprachassistenten. Einen API-Key erstellst du unter {url}. Lass das Feld leer, um nur das Tastenmenü zu nutzen; der Key lässt sich später über „Neu konfigurieren“ ergänzen.",
+        "description": "Verbinde optional den OpenAI-Sprachassistenten. Einen API-Key erstellst du unter {url}. Lass das Feld leer, um nur Tastenbefehle zu nutzen; der Key lässt sich später im SIP-Assistant-Panel ergänzen.",
         "data": {
           "api_key": "OpenAI-API-Key",
           "engine": "Sprachmodell"
@@ -50,192 +50,16 @@
     "abort": {
       "already_configured": "Ein SIP Assistant nutzt diesen Port bereits.",
       "reconfigure_successful": "Die Neukonfiguration war erfolgreich"
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "SIP-Assistant-Optionen",
-        "description": "Tastenbefehle verwaltest du auf der Integrationsseite über **Tastenbefehl hinzufügen**.",
-        "sections": {
-          "call": {
-            "name": "Anrufablauf",
-            "description": "Was Anrufer hören und wie sich das Tastenmenü verhält.",
-            "data": {
-              "start_mode": "Nach dem Annehmen",
-              "greeting": "Begrüßung",
-              "announce_menu": "Menü ansagen",
-              "menu_prompt": "Eigene Menüansage",
-              "assistant_code": "Taste für den Sprachassistenten",
-              "pin": "PIN",
-              "tts_engine": "Sprachausgabe (TTS)",
-              "language": "Sprache",
-              "digit_timeout": "Auf weitere Ziffern warten",
-              "max_call_duration": "Maximale Gesprächsdauer"
-            },
-            "data_description": {
-              "greeting": "Wird zuerst gesprochen. Templates werden unterstützt (Variablen: caller, caller_name). Leer lassen für keine Begrüßung.",
-              "announce_menu": "Liest alle Tastenbefehle vor. Ist das deaktiviert, signalisiert ein kurzer Ton die Eingabebereitschaft.",
-              "menu_prompt": "Ersetzt die automatisch erzeugte Ansage. Templates werden unterstützt.",
-              "assistant_code": "Diese Taste verbindet im Menü mit dem Sprachassistenten. Mit * geht es während des Gesprächs zurück ins Menü.",
-              "pin": "Optionale 4–12-stellige PIN, die Anrufer zuerst eingeben müssen (abschließen mit #).",
-              "tts_engine": "Für Begrüßung, Menü und Bestätigungen. Standard ist die bevorzugte Engine. Ohne TTS werden stattdessen Töne abgespielt.",
-              "language": "Sprache der Ansagen und des Assistenten. Standard ist die Home-Assistant-Sprache.",
-              "digit_timeout": "Wie lange auf weitere Ziffern gewartet wird, bevor ein mehrstelliger Code ausgeführt wird. # bestätigt sofort.",
-              "max_call_duration": "Danach wird der Anruf automatisch beendet."
-            }
-          },
-          "assistant": {
-            "name": "Sprachassistent",
-            "description": "Benötigt einen OpenAI-API-Key (siehe „Neu konfigurieren“).",
-            "data": {
-              "engine": "Sprachmodell",
-              "voice": "Stimme",
-              "prompt": "Anweisungen",
-              "llm_hass_api": "Home Assistant steuern",
-              "live_model": "GPT-Live-Modell",
-              "backend_model": "GPT-Live-Backend-Modell",
-              "reasoning_effort": "Denkaufwand des Backends",
-              "realtime_model": "Realtime-Modell"
-            },
-            "data_description": {
-              "voice": "GPT-Live bietet weitere Stimmen, die per Name eingegeben werden können.",
-              "prompt": "Persönlichkeit und Verhalten des Assistenten. Templates werden unterstützt (Variablen: caller, caller_name).",
-              "llm_hass_api": "Werkzeuge, die der Assistent nutzen darf. „Assist“ steuert die für Assist freigegebenen Entitäten.",
-              "backend_model": "Responses-Modell, das für GPT-Live die Werkzeuge ausführt.",
-              "reasoning_effort": "Niedrigere Werte antworten schneller."
-            }
-          },
-          "network": {
-            "name": "Netzwerk und Sicherheit",
-            "description": "Wer anrufen darf und wie das Audio übertragen wird.",
-            "data": {
-              "allowed_networks": "Erlaubte Netzwerke",
-              "rtp_port_start": "Erster RTP-Port",
-              "rtp_port_end": "Letzter RTP-Port",
-              "external_host": "Angekündigte Adresse",
-              "max_calls": "Gleichzeitige Anrufe"
-            },
-            "data_description": {
-              "allowed_networks": "Kommagetrennte Netzwerke (CIDR), aus denen angerufen werden darf. Leer lassen erlaubt alle (nicht empfohlen).",
-              "rtp_port_start": "UDP-Ports für das Gesprächsaudio (einer pro Anruf). Bei Bedarf in der Firewall freigeben.",
-              "external_host": "Nur hinter NAT bzw. mit Portweiterleitung nötig: Adresse, die in SIP- und SDP-Headern angegeben wird."
-            }
-          }
-        }
-      }
     },
-    "error": {
-      "invalid_assistant_code": "Die Assistenten-Taste muss aus 1–8 Zeichen von 0–9 und A–D bestehen.",
-      "assistant_code_in_use": "Die Assistenten-Taste wird bereits von einem Tastenbefehl verwendet.",
-      "invalid_pin": "Die PIN muss aus 4–12 Ziffern bestehen.",
-      "invalid_networks": "Mindestens ein erlaubtes Netzwerk ist keine gültige Adresse bzw. kein gültiges CIDR-Netz.",
-      "invalid_rtp_range": "Der RTP-Portbereich muss mindestens zwei Ports umfassen."
-    }
-  },
-  "config_subentries": {
-    "command": {
-      "initiate_flow": {
-        "user": "Tastenbefehl hinzufügen",
-        "reconfigure": "Tastenbefehl bearbeiten"
-      },
-      "entry_type": "Tastenbefehl",
-      "step": {
-        "user": {
-          "title": "Tastenbefehl hinzufügen",
-          "description": "Was soll passieren, wenn der Code eingegeben wird?",
-          "menu_options": {
-            "entity": "Skript, Automation oder Szene starten bzw. Entität umschalten",
-            "actions": "Eigene Aktionen ausführen",
-            "announcement": "Einen Text ansagen (z. B. einen Sensorwert)"
-          }
-        },
-        "entity": {
-          "title": "Entität ausführen",
-          "data": {
-            "name": "Name",
-            "code": "Tastencode",
-            "entity_id": "Entität",
-            "response": "Gesprochene Bestätigung",
-            "announce": "In der Menüansage nennen",
-            "ai_enabled": "Sprachassistent darf ihn ausführen",
-            "description": "Beschreibung für den Sprachassistenten"
-          },
-          "data_description": {
-            "code": "1–8 Zeichen aus 0–9 und A–D. * und # sind reserviert.",
-            "entity_id": "Skripte und Szenen werden gestartet, Automationen ausgelöst, Buttons gedrückt und andere Entitäten umgeschaltet.",
-            "response": "Optional. Templates werden unterstützt. Standard: „NAME wurde ausgeführt“.",
-            "description": "Hilft dem Assistenten zu entscheiden, wann er diesen Befehl nutzt."
-          }
-        },
-        "actions": {
-          "title": "Eigene Aktionen ausführen",
-          "data": {
-            "name": "Name",
-            "code": "Tastencode",
-            "actions": "Aktionen",
-            "response": "Gesprochene Bestätigung",
-            "announce": "In der Menüansage nennen",
-            "ai_enabled": "Sprachassistent darf ihn ausführen",
-            "description": "Beschreibung für den Sprachassistenten"
-          },
-          "data_description": {
-            "code": "1–8 Zeichen aus 0–9 und A–D. * und # sind reserviert.",
-            "actions": "Die Variablen caller, caller_name und code stehen zur Verfügung.",
-            "response": "Optional. Templates werden unterstützt.",
-            "description": "Hilft dem Assistenten zu entscheiden, wann er diesen Befehl nutzt."
-          }
-        },
-        "announcement": {
-          "title": "Text ansagen",
-          "data": {
-            "name": "Name",
-            "code": "Tastencode",
-            "response": "Text",
-            "announce": "In der Menüansage nennen",
-            "ai_enabled": "Sprachassistent darf ihn ausführen",
-            "description": "Beschreibung für den Sprachassistenten"
-          },
-          "data_description": {
-            "code": "1–8 Zeichen aus 0–9 und A–D. * und # sind reserviert.",
-            "response": "Templates werden unterstützt, z. B. um einen Sensorzustand vorzulesen."
-          }
-        }
-      },
-      "error": {
-        "invalid_code": "Der Code muss aus 1–8 Zeichen von 0–9 und A–D bestehen.",
-        "code_reserved": "Dieser Code ist die Taste für den Sprachassistenten.",
-        "code_in_use": "Ein anderer Tastenbefehl nutzt diesen Code bereits.",
-        "name_in_use": "Ein anderer Tastenbefehl nutzt diesen Namen bereits.",
-        "invalid_actions": "Die Aktionen sind ungültig.",
-        "invalid_template": "Das Template ist ungültig."
-      },
-      "abort": {
-        "reconfigure_successful": "Die Neukonfiguration war erfolgreich",
-        "entry_not_loaded": "Tastenbefehle können nur hinzugefügt werden, wenn die Integration geladen ist."
-      }
+    "create_entry": {
+      "default": "SIP Assistant ist bereit. Tastenbefehle, Assistenten und den Anrufablauf richtest du im Panel **SIP Assistant** in der Seitenleiste ein ([öffnen]({panel}))."
     }
   },
   "selector": {
-    "start_mode": {
-      "options": {
-        "menu": "Mit dem Tastenmenü beginnen",
-        "assistant": "Direkt mit dem Sprachassistenten verbinden"
-      }
-    },
     "engine": {
       "options": {
         "live": "OpenAI GPT-Live (empfohlen)",
         "realtime": "OpenAI Realtime-API"
-      }
-    },
-    "reasoning_effort": {
-      "options": {
-        "none": "Keiner",
-        "minimal": "Minimal",
-        "low": "Niedrig",
-        "medium": "Mittel",
-        "high": "Hoch"
       }
     }
   },

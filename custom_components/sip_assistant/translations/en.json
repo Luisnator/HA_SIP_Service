@@ -18,7 +18,7 @@
       },
       "assistant": {
         "title": "Voice assistant",
-        "description": "Optionally connect the OpenAI voice assistant. Create an API key at {url}. Leave the key empty to only use the keypad menu; you can add it later via Reconfigure.",
+        "description": "Optionally connect the OpenAI voice assistant. Create an API key at {url}. Leave the key empty to only use keypad commands; you can add it later in the SIP Assistant panel.",
         "data": {
           "api_key": "OpenAI API key",
           "engine": "Voice model"
@@ -50,192 +50,16 @@
     "abort": {
       "already_configured": "A SIP Assistant already uses this port.",
       "reconfigure_successful": "Re-configuration was successful"
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "SIP Assistant options",
-        "description": "Keypad commands are managed on the integration page with **Add keypad command**.",
-        "sections": {
-          "call": {
-            "name": "Call flow",
-            "description": "What callers hear and how the keypad menu behaves.",
-            "data": {
-              "start_mode": "When a call is answered",
-              "greeting": "Greeting",
-              "announce_menu": "Announce the menu",
-              "menu_prompt": "Custom menu announcement",
-              "assistant_code": "Key for the voice assistant",
-              "pin": "PIN",
-              "tts_engine": "Text-to-speech engine",
-              "language": "Language",
-              "digit_timeout": "Wait for further digits",
-              "max_call_duration": "Maximum call duration"
-            },
-            "data_description": {
-              "greeting": "Spoken first. Templates are supported (variables: caller, caller_name). Leave empty for no greeting.",
-              "announce_menu": "Read out all keypad commands. When disabled, a short tone signals that input is expected.",
-              "menu_prompt": "Replaces the generated announcement. Templates are supported.",
-              "assistant_code": "Pressing this key in the menu connects the caller to the voice assistant. Press * during the conversation to return to the menu.",
-              "pin": "Optional 4–12 digit PIN callers must enter (followed by #) before anything else.",
-              "tts_engine": "Used for greeting, menu and confirmations. Defaults to the preferred engine. Without TTS, tones are played instead.",
-              "language": "Language of announcements and the assistant. Defaults to the Home Assistant language.",
-              "digit_timeout": "How long to wait for more digits before a multi-digit code is submitted. # submits immediately.",
-              "max_call_duration": "Calls are ended automatically after this time."
-            }
-          },
-          "assistant": {
-            "name": "Voice assistant",
-            "description": "Requires an OpenAI API key (see Reconfigure).",
-            "data": {
-              "engine": "Voice model",
-              "voice": "Voice",
-              "prompt": "Instructions",
-              "llm_hass_api": "Control Home Assistant",
-              "live_model": "GPT-Live model",
-              "backend_model": "GPT-Live backend model",
-              "reasoning_effort": "Backend reasoning effort",
-              "realtime_model": "Realtime model"
-            },
-            "data_description": {
-              "voice": "GPT-Live offers additional voices that can be entered by name.",
-              "prompt": "Personality and behaviour of the assistant. Templates are supported (variables: caller, caller_name).",
-              "llm_hass_api": "Tools the assistant may use. “Assist” controls the entities exposed to Assist.",
-              "backend_model": "Responses model that runs the tools for GPT-Live.",
-              "reasoning_effort": "Lower values answer faster."
-            }
-          },
-          "network": {
-            "name": "Network and security",
-            "description": "Restrict who can call and how media is transported.",
-            "data": {
-              "allowed_networks": "Allowed networks",
-              "rtp_port_start": "First RTP port",
-              "rtp_port_end": "Last RTP port",
-              "external_host": "Advertised address",
-              "max_calls": "Simultaneous calls"
-            },
-            "data_description": {
-              "allowed_networks": "Comma separated networks (CIDR) that may call. Leave empty to allow everyone (not recommended).",
-              "rtp_port_start": "UDP ports used for call audio (one per call). Open them in your firewall if needed.",
-              "external_host": "Only needed behind NAT or with port forwarding: address placed in SIP and SDP headers."
-            }
-          }
-        }
-      }
     },
-    "error": {
-      "invalid_assistant_code": "The assistant key must be 1–8 characters from 0–9 and A–D.",
-      "assistant_code_in_use": "The assistant key is already used by a keypad command.",
-      "invalid_pin": "The PIN must consist of 4–12 digits.",
-      "invalid_networks": "At least one allowed network is not a valid address or CIDR network.",
-      "invalid_rtp_range": "The RTP port range must contain at least two ports."
-    }
-  },
-  "config_subentries": {
-    "command": {
-      "initiate_flow": {
-        "user": "Add keypad command",
-        "reconfigure": "Edit keypad command"
-      },
-      "entry_type": "Keypad command",
-      "step": {
-        "user": {
-          "title": "Add keypad command",
-          "description": "What should happen when the code is entered?",
-          "menu_options": {
-            "entity": "Run a script, automation or scene, or toggle an entity",
-            "actions": "Run custom actions",
-            "announcement": "Speak a text (e.g. a sensor value)"
-          }
-        },
-        "entity": {
-          "title": "Run an entity",
-          "data": {
-            "name": "Name",
-            "code": "Keypad code",
-            "entity_id": "Entity",
-            "response": "Spoken confirmation",
-            "announce": "Mention in the menu announcement",
-            "ai_enabled": "Allow the voice assistant to run it",
-            "description": "Description for the voice assistant"
-          },
-          "data_description": {
-            "code": "1–8 characters from 0–9 and A–D. * and # are reserved.",
-            "entity_id": "Scripts and scenes are started, automations triggered, buttons pressed and other entities toggled.",
-            "response": "Optional. Templates are supported. Defaults to “NAME has been executed”.",
-            "description": "Helps the assistant decide when to use this command."
-          }
-        },
-        "actions": {
-          "title": "Run custom actions",
-          "data": {
-            "name": "Name",
-            "code": "Keypad code",
-            "actions": "Actions",
-            "response": "Spoken confirmation",
-            "announce": "Mention in the menu announcement",
-            "ai_enabled": "Allow the voice assistant to run it",
-            "description": "Description for the voice assistant"
-          },
-          "data_description": {
-            "code": "1–8 characters from 0–9 and A–D. * and # are reserved.",
-            "actions": "The variables caller, caller_name and code are available.",
-            "response": "Optional. Templates are supported.",
-            "description": "Helps the assistant decide when to use this command."
-          }
-        },
-        "announcement": {
-          "title": "Speak a text",
-          "data": {
-            "name": "Name",
-            "code": "Keypad code",
-            "response": "Text",
-            "announce": "Mention in the menu announcement",
-            "ai_enabled": "Allow the voice assistant to run it",
-            "description": "Description for the voice assistant"
-          },
-          "data_description": {
-            "code": "1–8 characters from 0–9 and A–D. * and # are reserved.",
-            "response": "Templates are supported, for example to read out a sensor state."
-          }
-        }
-      },
-      "error": {
-        "invalid_code": "The code must be 1–8 characters from 0–9 and A–D.",
-        "code_reserved": "This code is the voice assistant key.",
-        "code_in_use": "Another keypad command already uses this code.",
-        "name_in_use": "Another keypad command already uses this name.",
-        "invalid_actions": "The actions are not valid.",
-        "invalid_template": "The template is not valid."
-      },
-      "abort": {
-        "reconfigure_successful": "Re-configuration was successful",
-        "entry_not_loaded": "Cannot add keypad commands while the integration is not loaded."
-      }
+    "create_entry": {
+      "default": "SIP Assistant is ready. Configure keypad commands, assistants and the call flow in the **SIP Assistant** panel in the sidebar ([open]({panel}))."
     }
   },
   "selector": {
-    "start_mode": {
-      "options": {
-        "menu": "Start with the keypad menu",
-        "assistant": "Connect straight to the voice assistant"
-      }
-    },
     "engine": {
       "options": {
         "live": "OpenAI GPT-Live (recommended)",
         "realtime": "OpenAI Realtime API"
-      }
-    },
-    "reasoning_effort": {
-      "options": {
-        "none": "None",
-        "minimal": "Minimal",
-        "low": "Low",
-        "medium": "Medium",
-        "high": "High"
       }
     }
   },
