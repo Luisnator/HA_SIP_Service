@@ -1,0 +1,14 @@
+{
+  "domain": "sip_assistant",
+  "name": "SIP Assistant",
+  "after_dependencies": ["conversation", "intent", "tts"],
+  "codeowners": ["@Luisnator"],
+  "config_flow": true,
+  "dependencies": ["llm", "network"],
+  "documentation": "https://github.com/Luisnator/HA_SIP_Service",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Luisnator/HA_SIP_Service/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
