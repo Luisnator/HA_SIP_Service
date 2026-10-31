@@ -2,6 +2,7 @@
   "name": "sip-assistant-panel",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
   "description": "Configuration panel of the SIP Assistant Home Assistant integration",
   "type": "module",
   "scripts": {
