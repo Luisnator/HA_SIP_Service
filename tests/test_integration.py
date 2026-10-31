@@ -308,6 +308,24 @@ def test_sanitize_arguments() -> None:
         "name": "Flur",
         "temperature": 2700,
     }
+    # A brightness of 0 next to a color change would switch the light off.
+    assert sanitize_arguments({"name": "Flur", "color": "blue", "brightness": 0}) == {
+        "name": "Flur",
+        "color": "blue",
+    }
+    assert sanitize_arguments({"name": "Flur", "temperature": 3000, "brightness": 0}) == {
+        "name": "Flur",
+        "temperature": 3000,
+    }
+    assert sanitize_arguments({"name": "Flur", "color": "blue", "brightness": 40}) == {
+        "name": "Flur",
+        "color": "blue",
+        "brightness": 40,
+    }
+    assert sanitize_arguments({"name": "Flur", "brightness": 0}) == {
+        "name": "Flur",
+        "brightness": 0,
+    }
 
 
 async def test_light_color_tool_hint(hass: HomeAssistant) -> None:
@@ -335,4 +353,81 @@ async def test_light_color_tool_hint(hass: HomeAssistant) -> None:
     )
     tool = next(tool for tool in api.tools if tool.name.endswith("HassLightSet"))
     spec = format_llm_tool(tool, api.custom_serializer)
-    assert spec["description"].endswith("Set either color or temperature, never both.")
+    assert "Set either color or temperature, never both." in spec["description"]
+    assert "a brightness of 0 turns the light off" in spec["description"]
+
+
+async def test_light_details_tool(hass: HomeAssistant) -> None:
+    """The assistant can read colors of exposed lights only."""
+    import json
+
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+    from homeassistant.setup import async_setup_component
+
+    from custom_components.sip_assistant.settings import AssistantProfile, Settings
+    from custom_components.sip_assistant.voice.lights import closest_color_name
+    from custom_components.sip_assistant.voice.tools import ToolBridge
+
+    for domain in ("homeassistant", "intent", "llm", "light"):
+        assert await async_setup_component(hass, domain, {})
+    hass.states.async_set(
+        "light.flur",
+        "on",
+        {
+            "friendly_name": "Flurlicht",
+            "brightness": 128,
+            "color_mode": "hs",
+            "rgb_color": (250, 5, 10),
+            "supported_color_modes": ["color_temp", "hs"],
+            "min_color_temp_kelvin": 2000,
+            "max_color_temp_kelvin": 6500,
+        },
+    )
+    hass.states.async_set(
+        "light.bad",
+        "on",
+        {"friendly_name": "Bad", "color_mode": "color_temp", "color_temp_kelvin": 2700},
+    )
+    hass.states.async_set("light.geheim", "on", {"friendly_name": "Geheim"})
+    async_expose_entity(hass, "conversation", "light.flur", True)
+    async_expose_entity(hass, "conversation", "light.bad", True)
+    async_expose_entity(hass, "conversation", "light.geheim", False)
+
+    async def run_command(command: Any) -> None:
+        raise AssertionError("not expected")
+
+    bridge = ToolBridge(
+        hass,
+        Settings(language="en"),
+        AssistantProfile(id="a", name="Assistant", code="0"),
+        ENGLISH,
+        on_end_call=MagicMock(),
+        run_command=run_command,
+    )
+    await bridge.async_setup()
+    assert "get_light_details" in {spec["name"] for spec in bridge.specs()}
+
+    everything = json.loads(await bridge.async_call("get_light_details", "{}"))["lights"]
+    assert {light["name"] for light in everything} == {"Flurlicht", "Bad"}
+
+    (flur,) = json.loads(await bridge.async_call("get_light_details", '{"name": "flur"}'))["lights"]
+    assert flur["brightness_pct"] == 50
+    assert flur["rgb_color"] == [250, 5, 10]
+    assert flur["color_name"] == "red"
+    assert flur["supported_color_modes"] == ["color_temp", "hs"]
+    (bad,) = json.loads(await bridge.async_call("get_light_details", '{"name": "Bad"}'))["lights"]
+    assert bad["color_temp_kelvin"] == 2700
+    assert "no_matching_light" in await bridge.async_call("get_light_details", '{"name": "Geheim"}')
+    assert closest_color_name((0, 0, 250)) in ("blue", "mediumblue")
+
+    # Without device control the tool is not offered.
+    no_access = ToolBridge(
+        hass,
+        Settings(language="en"),
+        AssistantProfile(id="b", name="Talk", code="1", home_control=False),
+        ENGLISH,
+        on_end_call=MagicMock(),
+        run_command=run_command,
+    )
+    await no_access.async_setup()
+    assert "get_light_details" not in {spec["name"] for spec in no_access.specs()}

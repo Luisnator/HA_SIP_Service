@@ -41,6 +41,9 @@ class Phrases:
     web_search_description: str
     web_search_query: str
     web_search_instructions: str
+    light_details_description: str
+    light_name: str
+    light_area: str
 
 
 GERMAN = Phrases(
@@ -118,6 +121,13 @@ GERMAN = Phrases(
         "Sätzen auf Deutsch. Der Text wird am Telefon vorgelesen: keine URLs, "
         "kein Markdown, keine Quellenangaben."
     ),
+    light_details_description=(
+        "Liefert Farbe, Farbname, Farbmodus, Farbtemperatur und Helligkeit der "
+        "freigegebenen Lampen. Nutze das, bevor du Farben beschreibst oder relativ "
+        "zur aktuellen Farbe änderst."
+    ),
+    light_name="Name der Lampe (Teil des Namens genügt).",
+    light_area="Bereich bzw. Raum der Lampen.",
 )
 
 ENGLISH = Phrases(
@@ -188,6 +198,13 @@ ENGLISH = Phrases(
         "Answer the question using web search in at most three short sentences. "
         "The text is read out on the phone: no URLs, no Markdown, no citations."
     ),
+    light_details_description=(
+        "Returns color, color name, color mode, color temperature and brightness of "
+        "the exposed lights. Use it before describing colors or changing them "
+        "relative to the current color."
+    ),
+    light_name="Name of the light (part of the name is enough).",
+    light_area="Area or room of the lights.",
 )
 
 
