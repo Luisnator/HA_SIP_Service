@@ -18,12 +18,12 @@ from .const import (
     EVENT_COMMAND_EXECUTED,
     EVENT_PIN_FAILED,
     LOGGER,
+    START_MENU,
     ActionType,
     CallPhase,
-    StartMode,
 )
 from .rtp.tones import Tone, render_tone
-from .settings import CommandConfig
+from .settings import AssistantProfile, CommandConfig
 from .sip.call import SipCall
 from .texts import phrases_for, spell_code
 from .voice import AgentExit, ToolBridge, VoiceAgent, create_agent
@@ -55,6 +55,8 @@ class CallSession:
         self._digits: asyncio.Queue[str] = asyncio.Queue()
         self._digit_event = asyncio.Event()
         self._agent: VoiceAgent | None = None
+        self._next_assistant: AssistantProfile | None = None
+        self.assistant: AssistantProfile | None = None
         self._context = Context()
         self.variables: dict[str, Any] = {
             "caller": call.caller.number,
@@ -94,13 +96,18 @@ class CallSession:
         if settings.pin and not await self._authenticate(settings.pin):
             return
         phase: CallPhase | None = CallPhase.MENU
-        if settings.start_mode is StartMode.ASSISTANT:
-            if settings.assistant_available:
-                phase = CallPhase.ASSISTANT
-            else:
-                LOGGER.warning("Voice assistant start mode needs an OpenAI API key")
+        if (assistant := settings.start_assistant) is not None:
+            self._next_assistant = assistant
+            phase = CallPhase.ASSISTANT
+        elif settings.start != START_MENU:
+            LOGGER.warning("The start assistant is not available (missing API key?)")
         while phase is not None and self.call.is_active:
-            phase = await (self._menu() if phase is CallPhase.MENU else self._assistant())
+            if phase is CallPhase.MENU:
+                phase = await self._menu()
+            elif self._next_assistant is not None:
+                phase = await self._assistant(self._next_assistant)
+            else:
+                phase = CallPhase.MENU
 
     async def _authenticate(self, pin: str) -> bool:
         self._set_phase(CallPhase.PIN)
@@ -150,7 +157,8 @@ class CallSession:
             if code == REPEAT_KEY:
                 announce = True
                 continue
-            if self.settings.assistant_available and code == self.settings.assistant_code:
+            if (assistant := self.settings.assistant_for_code(code)) is not None:
+                self._next_assistant = assistant
                 return CallPhase.ASSISTANT
             await self._handle_code(code)
 
@@ -158,15 +166,14 @@ class CallSession:
         settings = self.settings
         if settings.menu_prompt:
             return render_text(self._hass, settings.menu_prompt, self.variables)
+        items = sorted(
+            (item for item in (*settings.commands, *settings.active_assistants) if item.announce),
+            key=lambda item: item.code,
+        )
         parts = [
-            self.phrases.menu_item.format(name=command.name, code=spell_code(command.code))
-            for command in settings.commands
-            if command.announce
+            self.phrases.menu_item.format(name=item.name, code=spell_code(item.code))
+            for item in items
         ]
-        if settings.assistant_available:
-            parts.append(
-                self.phrases.menu_assistant.format(code=spell_code(settings.assistant_code))
-            )
         if not parts:
             return self.phrases.menu_empty
         parts.append(self.phrases.menu_repeat)
@@ -180,9 +187,7 @@ class CallSession:
 
     async def _collect_code(self) -> str | None:
         """Collect a keypad code; returns ``*`` for 'repeat' or None on timeout."""
-        codes = [command.code for command in self.settings.commands]
-        if self.settings.assistant_available:
-            codes.append(self.settings.assistant_code)
+        codes = self.settings.codes
         digit = await self._next_digit(MENU_IDLE_TIMEOUT)
         entered = ""
         while digit is not None:
@@ -248,18 +253,24 @@ class CallSession:
             {**self.event_data, "code": command.code, "command": command.name, "success": True},
         )
 
-    async def _assistant(self) -> CallPhase | None:
+    async def _assistant(self, profile: AssistantProfile) -> CallPhase | None:
         settings = self.settings
         allow_menu = settings.menu_available
+        self._next_assistant = None
         if not settings.assistant_available:
             await self._say(self.phrases.assistant_not_configured, fallback=Tone.ERROR)
             return CallPhase.MENU if allow_menu else None
 
         self._set_phase(CallPhase.ASSISTANT)
-        self._gateway.fire_event(EVENT_ASSISTANT_STARTED, self.event_data)
+        self.assistant = profile
+        self._gateway.fire_event(
+            EVENT_ASSISTANT_STARTED,
+            {**self.event_data, "assistant": profile.name, "assistant_id": profile.id},
+        )
         tools = ToolBridge(
             self._hass,
             settings,
+            profile,
             self.phrases,
             on_end_call=self._end_call_requested,
             run_command=self.execute_command,
@@ -267,13 +278,20 @@ class CallSession:
         await tools.async_setup()
         self._clear_digits()
         self._agent = create_agent(
-            self._hass, settings, self.phrases, self.call, tools, allow_menu=allow_menu
+            self._hass,
+            settings,
+            profile,
+            phrases=self.phrases,
+            call=self.call,
+            tools=tools,
+            allow_menu=allow_menu,
         )
         try:
             result = await self._agent.run()
         finally:
             self._agent = None
-        LOGGER.debug("Voice assistant finished: %s", result)
+            self.assistant = None
+        LOGGER.debug("Voice assistant %s finished: %s", profile.name, result)
 
         match result:
             case AgentExit.HANGUP:

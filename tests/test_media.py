@@ -188,3 +188,27 @@ async def test_rtp_session_send_and_receive(socket_enabled) -> None:
     finally:
         session.close()
         peer.close()
+
+
+def test_speech_detector() -> None:
+    """Sustained loud audio triggers once; short noise and quiet do not."""
+    from custom_components.sip_assistant.voice.barge_in import SpeechDetector
+
+    codec = Codec.PCMU
+    quiet = codec.encode(array("h", [200, -200] * 80).tobytes())
+    loud = codec.encode(array("h", [8000, -8000] * 80).tobytes())
+    assert codec.rms(quiet) < 300
+    assert codec.rms(loud) > 7000
+
+    detector = SpeechDetector(codec)
+    assert not any(detector.feed(quiet) for _ in range(50))
+    # A short click (100 ms) is not speech.
+    assert not any(detector.feed(loud) for _ in range(5))
+    assert not any(detector.feed(quiet) for _ in range(10))
+    # 240 ms of speech with a short dip counts once.
+    results = [detector.feed(frame) for frame in [loud] * 6 + [quiet] * 2 + [loud] * 10]
+    assert results.count(True) == 1
+    assert not any(detector.feed(loud) for _ in range(30))  # still talking
+    # After a pause it re-arms.
+    assert not any(detector.feed(quiet) for _ in range(20))
+    assert any(detector.feed(loud) for _ in range(15))

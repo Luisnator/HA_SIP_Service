@@ -19,13 +19,15 @@ class RealtimeAgent(VoiceAgent):
         """Initialize the agent."""
         super().__init__(context)
         self._current_item: str | None = None
+        self._interrupted_items: set[str] = set()
+        self._response_active = False
         self._item_audio_ms: dict[str, int] = {}
         self._pending_calls: dict[str, list[asyncio.Task[None]]] = {}
 
     @property
     def url(self) -> str:
         """Return the websocket URL."""
-        return f"{OPENAI_REALTIME_URL}?model={quote(self.settings.realtime_model)}"
+        return f"{OPENAI_REALTIME_URL}?model={quote(self.profile.realtime_model)}"
 
     async def _start_session(self) -> None:
         audio_format = {"type": self.rtp.codec.openai_format}
@@ -41,7 +43,7 @@ class RealtimeAgent(VoiceAgent):
                             "format": audio_format,
                             "turn_detection": {"type": "semantic_vad"},
                         },
-                        "output": {"format": audio_format, "voice": self.settings.voice},
+                        "output": {"format": audio_format, "voice": self.profile.voice},
                     },
                     "tools": self.context.tools.specs(),
                     "tool_choice": "auto",
@@ -64,6 +66,8 @@ class RealtimeAgent(VoiceAgent):
         match event.get("type"):
             case "response.output_audio.delta":
                 item_id = event.get("item_id")
+                if item_id in self._interrupted_items:
+                    return  # rest of a response the caller interrupted
                 self._current_item = item_id
                 if item_id:
                     # 8 kHz G.711: 8 bytes per millisecond, base64 expands 4/3
@@ -79,7 +83,10 @@ class RealtimeAgent(VoiceAgent):
                     response_id = event.get("response_id", "")
                     task = self._create_task(self._run_tool(item), "tool call")
                     self._pending_calls.setdefault(response_id, []).append(task)
+            case "response.created":
+                self._response_active = True
             case "response.done":
+                self._response_active = False
                 await self._response_done(event.get("response") or {})
             case "response.output_audio_transcript.done":
                 LOGGER.debug("Assistant said: %s", event.get("transcript"))
@@ -98,6 +105,7 @@ class RealtimeAgent(VoiceAgent):
         played = min(self.rtp.played_ms(item_id), self._item_audio_ms.get(item_id, 0))
         self.rtp.clear()
         self._current_item = None
+        self._interrupted_items.add(item_id)
         await self._send(
             {
                 "type": "conversation.item.truncate",
@@ -106,6 +114,14 @@ class RealtimeAgent(VoiceAgent):
                 "audio_end_ms": played,
             }
         )
+
+    async def _on_caller_speech(self) -> None:
+        """Cancel the answer as soon as the caller talks over it."""
+        LOGGER.debug("Caller interrupted the assistant")
+        if self._response_active:
+            self._response_active = False
+            await self._send({"type": "response.cancel"})
+        await self._interrupt()
 
     async def _run_tool(self, item: dict[str, Any]) -> None:
         output = await self.context.tools.async_call(item.get("name", ""), item.get("arguments"))

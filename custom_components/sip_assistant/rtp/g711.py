@@ -5,6 +5,7 @@ from __future__ import annotations
 from array import array
 from enum import Enum
 from functools import cache
+import math
 import sys
 
 SAMPLE_RATE = 8000
@@ -78,6 +79,11 @@ def _decode_table(codec: Codec) -> tuple[int, ...]:
     return tuple(decode(value) for value in range(256))
 
 
+@cache
+def _square_table(codec: Codec) -> tuple[int, ...]:
+    return tuple(sample * sample for sample in _decode_table(codec))
+
+
 class Codec(Enum):
     """G.711 variants supported for calls."""
 
@@ -116,6 +122,12 @@ class Codec(Enum):
             samples.byteswap()
         table = _encode_table(self)
         return bytes(map(table.__getitem__, samples))
+
+    def rms(self, data: bytes) -> float:
+        """Return the RMS level (16-bit scale) of encoded audio."""
+        if not data:
+            return 0.0
+        return math.sqrt(sum(map(_square_table(self).__getitem__, data)) / len(data))
 
     def decode(self, data: bytes) -> bytes:
         """Decode to signed 16-bit little endian mono PCM."""

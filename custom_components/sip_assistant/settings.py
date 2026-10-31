@@ -1,4 +1,4 @@
-"""Typed view of a config entry's data, options and subentries."""
+"""Typed view of a config entry's data and options."""
 
 from __future__ import annotations
 
@@ -18,20 +18,23 @@ from .const import (
     CONF_ALLOWED_NETWORKS,
     CONF_ANNOUNCE,
     CONF_ANNOUNCE_MENU,
-    CONF_ASSISTANT_CODE,
     CONF_BACKEND_MODEL,
     CONF_CODE,
     CONF_DESCRIPTION,
     CONF_DIGIT_TIMEOUT,
     CONF_ENGINE,
     CONF_EXTERNAL_HOST,
+    CONF_FAST_INTERRUPT,
     CONF_GREETING,
+    CONF_HOME_CONTROL,
+    CONF_ID,
     CONF_LANGUAGE,
     CONF_LIVE_MODEL,
     CONF_LLM_HASS_API,
     CONF_MAX_CALL_DURATION,
     CONF_MAX_CALLS,
     CONF_MENU_PROMPT,
+    CONF_PHONE_COMMANDS,
     CONF_PIN,
     CONF_PROMPT,
     CONF_REALTIME_MODEL,
@@ -42,11 +45,11 @@ from .const import (
     CONF_SIP_PASSWORD,
     CONF_SIP_PORT,
     CONF_SIP_USER,
-    CONF_START_MODE,
+    CONF_START,
     CONF_TTS_ENGINE,
     CONF_VOICE,
+    CONF_WEB_SEARCH,
     DEFAULT_ALLOWED_NETWORKS,
-    DEFAULT_ASSISTANT_CODE,
     DEFAULT_BACKEND_MODEL,
     DEFAULT_DIGIT_TIMEOUT,
     DEFAULT_ENGINE,
@@ -59,15 +62,14 @@ from .const import (
     DEFAULT_RTP_PORT_START,
     DEFAULT_SIP_PORT,
     DEFAULT_SIP_USER,
-    DEFAULT_START_MODE,
     DEFAULT_VOICE,
-    SECTION_ASSISTANT,
+    SECTION_ASSISTANTS,
     SECTION_CALL,
+    SECTION_COMMANDS,
     SECTION_NETWORK,
-    SUBENTRY_COMMAND,
+    START_MENU,
     ActionType,
     Engine,
-    StartMode,
 )
 from .sip.server import IPNetwork, SipServerConfig
 
@@ -96,7 +98,7 @@ def parse_networks(value: str) -> tuple[IPNetwork, ...]:
 
 @dataclass(frozen=True, slots=True)
 class CommandConfig:
-    """A keypad command (one config subentry)."""
+    """A keypad command."""
 
     id: str
     name: str
@@ -110,20 +112,77 @@ class CommandConfig:
     description: str | None = None
 
     @classmethod
-    def from_data(cls, subentry_id: str, data: Mapping[str, Any]) -> CommandConfig:
-        """Create from subentry data."""
+    def from_data(cls, data: Mapping[str, Any]) -> CommandConfig:
+        """Create from stored data."""
         return cls(
-            id=subentry_id,
+            id=data[CONF_ID],
             name=data[CONF_NAME],
             code=data[CONF_CODE],
             action_type=ActionType(data[CONF_ACTION_TYPE]),
-            entity_id=data.get(CONF_ENTITY_ID),
+            entity_id=data.get(CONF_ENTITY_ID) or None,
             actions=tuple(data.get(CONF_ACTIONS) or ()),
             response=data.get(CONF_RESPONSE) or None,
             ai_enabled=data.get(CONF_AI_ENABLED, True),
             announce=data.get(CONF_ANNOUNCE, True),
             description=data.get(CONF_DESCRIPTION) or None,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantProfile:
+    """A voice assistant reachable with its own keypad code."""
+
+    id: str
+    name: str
+    code: str
+    engine: Engine = DEFAULT_ENGINE
+    voice: str = DEFAULT_VOICE
+    prompt: str | None = None
+    home_control: bool = True
+    llm_hass_api: tuple[str, ...] = ("assist",)
+    phone_commands: bool = True
+    web_search: bool = False
+    fast_interrupt: bool = True
+    announce: bool = True
+    live_model: str = DEFAULT_LIVE_MODEL
+    backend_model: str = DEFAULT_BACKEND_MODEL
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
+    realtime_model: str = DEFAULT_REALTIME_MODEL
+
+    @classmethod
+    def from_data(cls, data: Mapping[str, Any]) -> AssistantProfile:
+        """Create from stored data."""
+        llm_api = data.get(CONF_LLM_HASS_API, ["assist"])
+        if isinstance(llm_api, str):
+            llm_api = [llm_api]
+        return cls(
+            id=data[CONF_ID],
+            name=data[CONF_NAME],
+            code=data[CONF_CODE],
+            engine=Engine(data.get(CONF_ENGINE, DEFAULT_ENGINE)),
+            voice=data.get(CONF_VOICE) or DEFAULT_VOICE,
+            prompt=data.get(CONF_PROMPT) or None,
+            home_control=data.get(CONF_HOME_CONTROL, True),
+            llm_hass_api=tuple(llm_api),
+            phone_commands=data.get(CONF_PHONE_COMMANDS, True),
+            web_search=data.get(CONF_WEB_SEARCH, False),
+            fast_interrupt=data.get(CONF_FAST_INTERRUPT, True),
+            announce=data.get(CONF_ANNOUNCE, True),
+            live_model=data.get(CONF_LIVE_MODEL) or DEFAULT_LIVE_MODEL,
+            backend_model=data.get(CONF_BACKEND_MODEL) or DEFAULT_BACKEND_MODEL,
+            reasoning_effort=data.get(CONF_REASONING_EFFORT) or DEFAULT_REASONING_EFFORT,
+            realtime_model=data.get(CONF_REALTIME_MODEL) or DEFAULT_REALTIME_MODEL,
+        )
+
+    @property
+    def controls_home(self) -> bool:
+        """Return True when the assistant can act on the home."""
+        return (self.home_control and bool(self.llm_hass_api)) or self.phone_commands
+
+    @property
+    def risky(self) -> bool:
+        """Web content combined with device access enables prompt injection."""
+        return self.web_search and self.controls_home
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,51 +199,40 @@ class Settings:
     external_host: str | None = None
     max_calls: int = DEFAULT_MAX_CALLS
     # Call flow
-    start_mode: StartMode = DEFAULT_START_MODE
+    start: str = START_MENU
     greeting: str | None = None
     announce_menu: bool = True
     menu_prompt: str | None = None
-    assistant_code: str = DEFAULT_ASSISTANT_CODE
     pin: str | None = None
     tts_engine: str | None = None
     language: str = "en"
     digit_timeout: float = DEFAULT_DIGIT_TIMEOUT
     max_call_duration: int = DEFAULT_MAX_CALL_DURATION
-    # Assistant
+    # Assistants and commands
     api_key: str | None = None
-    engine: Engine = DEFAULT_ENGINE
-    voice: str = DEFAULT_VOICE
-    prompt: str | None = None
-    llm_hass_api: tuple[str, ...] = ()
-    live_model: str = DEFAULT_LIVE_MODEL
-    backend_model: str = DEFAULT_BACKEND_MODEL
-    reasoning_effort: str = DEFAULT_REASONING_EFFORT
-    realtime_model: str = DEFAULT_REALTIME_MODEL
     commands: tuple[CommandConfig, ...] = field(default_factory=tuple)
+    assistants: tuple[AssistantProfile, ...] = field(default_factory=tuple)
 
     @classmethod
     def from_entry(cls, hass: HomeAssistant, entry: ConfigEntry) -> Settings:
         """Build settings from a config entry."""
         data = entry.data
         call: Mapping[str, Any] = entry.options.get(SECTION_CALL, {})
-        assistant: Mapping[str, Any] = entry.options.get(SECTION_ASSISTANT, {})
         network: Mapping[str, Any] = entry.options.get(SECTION_NETWORK, {})
         try:
             networks = parse_networks(network.get(CONF_ALLOWED_NETWORKS, DEFAULT_ALLOWED_NETWORKS))
         except ValueError:
             networks = parse_networks(DEFAULT_ALLOWED_NETWORKS)
-        llm_api = assistant.get(CONF_LLM_HASS_API, ["assist"])
-        if isinstance(llm_api, str):
-            llm_api = [llm_api]
-        commands = tuple(
-            sorted(
-                (
-                    CommandConfig.from_data(subentry_id, subentry.data)
-                    for subentry_id, subentry in entry.subentries.items()
-                    if subentry.subentry_type == SUBENTRY_COMMAND
-                ),
-                key=lambda command: command.code,
-            )
+        commands = sorted(
+            (CommandConfig.from_data(item) for item in entry.options.get(SECTION_COMMANDS, [])),
+            key=lambda command: command.code,
+        )
+        assistants = sorted(
+            (
+                AssistantProfile.from_data(item)
+                for item in entry.options.get(SECTION_ASSISTANTS, [])
+            ),
+            key=lambda assistant: assistant.code,
         )
         return cls(
             sip_port=data.get(CONF_SIP_PORT, DEFAULT_SIP_PORT),
@@ -195,41 +243,59 @@ class Settings:
             rtp_port_end=int(network.get(CONF_RTP_PORT_END, DEFAULT_RTP_PORT_END)),
             external_host=network.get(CONF_EXTERNAL_HOST) or None,
             max_calls=int(network.get(CONF_MAX_CALLS, DEFAULT_MAX_CALLS)),
-            start_mode=StartMode(call.get(CONF_START_MODE, DEFAULT_START_MODE)),
+            start=call.get(CONF_START) or START_MENU,
             greeting=call.get(CONF_GREETING) or None,
             announce_menu=call.get(CONF_ANNOUNCE_MENU, True),
             menu_prompt=call.get(CONF_MENU_PROMPT) or None,
-            assistant_code=call.get(CONF_ASSISTANT_CODE) or DEFAULT_ASSISTANT_CODE,
             pin=call.get(CONF_PIN) or None,
             tts_engine=call.get(CONF_TTS_ENGINE) or None,
             language=call.get(CONF_LANGUAGE) or hass.config.language,
             digit_timeout=float(call.get(CONF_DIGIT_TIMEOUT, DEFAULT_DIGIT_TIMEOUT)),
             max_call_duration=int(call.get(CONF_MAX_CALL_DURATION, DEFAULT_MAX_CALL_DURATION)),
             api_key=data.get(CONF_API_KEY) or None,
-            engine=Engine(assistant.get(CONF_ENGINE, DEFAULT_ENGINE)),
-            voice=assistant.get(CONF_VOICE) or DEFAULT_VOICE,
-            prompt=assistant.get(CONF_PROMPT) or None,
-            llm_hass_api=tuple(llm_api),
-            live_model=assistant.get(CONF_LIVE_MODEL) or DEFAULT_LIVE_MODEL,
-            backend_model=assistant.get(CONF_BACKEND_MODEL) or DEFAULT_BACKEND_MODEL,
-            reasoning_effort=assistant.get(CONF_REASONING_EFFORT) or DEFAULT_REASONING_EFFORT,
-            realtime_model=assistant.get(CONF_REALTIME_MODEL) or DEFAULT_REALTIME_MODEL,
-            commands=commands,
+            commands=tuple(commands),
+            assistants=tuple(assistants),
         )
 
     @property
     def assistant_available(self) -> bool:
-        """Return True when the voice assistant can be used."""
+        """Return True when voice assistants can be used."""
         return self.api_key is not None
 
     @property
+    def active_assistants(self) -> tuple[AssistantProfile, ...]:
+        """Return the assistant profiles callers can reach."""
+        return self.assistants if self.assistant_available else ()
+
+    @property
+    def start_assistant(self) -> AssistantProfile | None:
+        """Return the assistant calls start with, if any."""
+        if self.start == START_MENU:
+            return None
+        return next(
+            (assistant for assistant in self.active_assistants if assistant.id == self.start),
+            None,
+        )
+
+    @property
     def menu_available(self) -> bool:
-        """Return True when the keypad menu has something to offer."""
-        return self.start_mode is StartMode.MENU or bool(self.commands)
+        """Return True when the keypad menu offers something to return to."""
+        return self.start == START_MENU or bool(self.commands) or len(self.active_assistants) > 1
+
+    @property
+    def codes(self) -> list[str]:
+        """Return all keypad codes callers can enter in the menu."""
+        return [item.code for item in (*self.commands, *self.active_assistants)]
 
     def command_for_code(self, code: str) -> CommandConfig | None:
         """Return the command for a keypad code."""
         return next((command for command in self.commands if command.code == code), None)
+
+    def assistant_for_code(self, code: str) -> AssistantProfile | None:
+        """Return the reachable assistant for a keypad code."""
+        return next(
+            (assistant for assistant in self.active_assistants if assistant.code == code), None
+        )
 
     def sip_server_config(self) -> SipServerConfig:
         """Return the configuration of the SIP server."""

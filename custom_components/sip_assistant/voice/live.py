@@ -38,26 +38,28 @@ class LiveAgent(VoiceAgent):
         return OPENAI_LIVE_URL
 
     async def _start_session(self) -> None:
-        settings = self.settings
+        profile = self.profile
         responses: dict[str, Any] = {
-            "model": settings.backend_model,
+            "model": profile.backend_model,
             "instructions": self._backend_instructions,
             "tools": self.context.tools.specs(),
             "tool_choice": "auto",
             "parallel_tool_calls": True,
         }
-        if settings.reasoning_effort:
-            responses["reasoning"] = {"effort": settings.reasoning_effort}
+        if profile.web_search:
+            responses["tools"].append({"type": "web_search"})
+        if profile.reasoning_effort:
+            responses["reasoning"] = {"effort": profile.reasoning_effort}
         await self._send(
             {
                 "type": "session.start",
                 "event_id": "session_start",
                 "session": {
-                    "model": settings.live_model,
+                    "model": profile.live_model,
                     "instructions": self.context.instructions,
                     "audio": {
                         "format": {"type": self.rtp.codec.openai_format, "rate": 8000},
-                        "output": {"voice": settings.voice},
+                        "output": {"voice": profile.voice},
                     },
                     "input": [
                         {

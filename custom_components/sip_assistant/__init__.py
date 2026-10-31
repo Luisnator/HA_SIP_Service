@@ -9,8 +9,11 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, LOGGER
+from . import websocket
+from .const import CONFIG_VERSION, DOMAIN, LOGGER
+from .defaults import migrate_v1_options
 from .gateway import SipAssistantGateway
+from .panel import async_register_panel, async_unregister_panel
 from .settings import Settings
 
 PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.EVENT, Platform.SENSOR]
@@ -21,6 +24,7 @@ type SipAssistantConfigEntry = ConfigEntry[SipAssistantGateway]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the integration."""
+    websocket.async_setup(hass)
     return True
 
 
@@ -45,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SipAssistantConfigEntry)
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_stop))
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_register_panel(hass)
     return True
 
 
@@ -53,7 +58,27 @@ async def async_unload_entry(hass: HomeAssistant, entry: SipAssistantConfigEntry
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         await entry.runtime_data.async_stop()
+        if not any(
+            other.entry_id != entry.entry_id
+            for other in hass.config_entries.async_loaded_entries(DOMAIN)
+        ):
+            async_unregister_panel(hass)
     return unload_ok
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: SipAssistantConfigEntry) -> bool:
+    """Migrate older config entries."""
+    if entry.version > CONFIG_VERSION:
+        return False
+    if entry.version == 1:
+        options = migrate_v1_options(hass, entry)
+        for subentry_id in list(entry.subentries):
+            hass.config_entries.async_remove_subentry(entry, subentry_id)
+        hass.config_entries.async_update_entry(
+            entry, options=options, version=CONFIG_VERSION, minor_version=1
+        )
+        LOGGER.info("Migrated SIP Assistant entry %s to version %s", entry.title, CONFIG_VERSION)
+    return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: SipAssistantConfigEntry) -> None:
