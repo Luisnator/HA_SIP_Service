@@ -214,3 +214,7 @@ npm run build
 | `custom_components/sip_assistant/websocket.py`, `panel.py` | Panel registration and its admin-only websocket API |
 | `custom_components/sip_assistant/validation.py`, `defaults.py` | Validation shared by the config flow and the panel, defaults and migration |
 | `frontend/` | Source of the configuration panel |
+
+## License
+
+SIP Assistant is released under the [MIT License](LICENSE).
