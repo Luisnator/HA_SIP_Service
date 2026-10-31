@@ -15,6 +15,7 @@ import probatio
 from ..const import DOMAIN, LOGGER, Engine
 from ..settings import AssistantProfile, CommandConfig, Settings
 from ..texts import Phrases
+from .lights import light_details
 from .web_search import async_web_search
 
 # Entities exposed to Assist are the ones the assistant may control.
@@ -22,6 +23,7 @@ CONVERSATION_DOMAIN = "conversation"
 END_CALL_TOOL = "end_call"
 WEB_SEARCH_TOOL = "web_search"
 COMMAND_TOOL = "run_phone_command"
+LIGHT_DETAILS_TOOL = "get_light_details"
 _UNSUPPORTED_SCHEMA_KEYS = {"oneOf", "anyOf", "allOf", "enum", "not"}
 # Arguments of HassLightSet that map to mutually exclusive light.turn_on fields
 _EXCLUSIVE_COLOR_ARGS = {"color", "temperature"}
@@ -40,6 +42,11 @@ def format_llm_tool(
     description = tool.description or tool.name
     if set(schema["properties"]) >= _EXCLUSIVE_COLOR_ARGS:
         description += ". Set either color or temperature, never both."
+    if "brightness" in schema["properties"] and _EXCLUSIVE_COLOR_ARGS & set(schema["properties"]):
+        description += (
+            " Only set brightness when the caller asks to change it; a brightness of 0"
+            " turns the light off."
+        )
     return {
         "type": "function",
         "name": tool.name,
@@ -49,15 +56,19 @@ def format_llm_tool(
 
 
 def sanitize_arguments(args: dict[str, Any]) -> dict[str, Any]:
-    """Drop empty optional values and resolve conflicting color arguments.
+    """Drop empty optional values and resolve conflicting light arguments.
 
-    Voice models sometimes send null for optional parameters, or both a color
-    and a color temperature, which light.turn_on rejects as exclusive.
+    Voice models fill optional parameters they do not need: null values, both
+    a color and a color temperature (which light.turn_on rejects as exclusive)
+    or a brightness of 0 next to a color, which would switch the light off.
     """
     args = {key: value for key, value in args.items() if value is not None and value != ""}
     if set(args) >= _EXCLUSIVE_COLOR_ARGS:
         LOGGER.debug("Dropping color temperature in favour of color %s", args["color"])
         del args["temperature"]
+    if _EXCLUSIVE_COLOR_ARGS & set(args) and args.get("brightness") in (0, "0"):
+        LOGGER.debug("Dropping brightness 0 that came with a color change")
+        del args["brightness"]
     return args
 
 
@@ -136,6 +147,21 @@ class ToolBridge:
             tools.extend(
                 format_llm_tool(tool, self._api.custom_serializer) for tool in self._api.tools
             )
+        if self._api is not None:
+            tools.append(
+                {
+                    "type": "function",
+                    "name": LIGHT_DETAILS_TOOL,
+                    "description": self._phrases.light_details_description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": self._phrases.light_name},
+                            "area": {"type": "string", "description": self._phrases.light_area},
+                        },
+                    },
+                }
+            )
         if self._commands:
             tools.append(
                 {
@@ -203,6 +229,11 @@ class ToolBridge:
             except HomeAssistantError as err:
                 return json_dumps({"error": "web_search_failed", "error_text": str(err)})
             return json_dumps({"answer": answer})
+        if name == LIGHT_DETAILS_TOOL and self._api is not None:
+            lights = light_details(
+                self._hass, CONVERSATION_DOMAIN, args.get("name"), args.get("area")
+            )
+            return json_dumps({"lights": lights} if lights else {"error": "no_matching_light"})
         if name == COMMAND_TOOL:
             command = self._commands.get(str(args.get("command")))
             if command is None:
