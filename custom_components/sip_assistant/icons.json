@@ -1,0 +1,34 @@
+{
+  "entity": {
+    "button": {
+      "hang_up": {
+        "default": "mdi:phone-hangup"
+      }
+    },
+    "event": {
+      "call_event": {
+        "default": "mdi:phone-log"
+      }
+    },
+    "sensor": {
+      "call_state": {
+        "default": "mdi:phone",
+        "state": {
+          "assistant": "mdi:account-voice",
+          "idle": "mdi:phone-hangup",
+          "menu": "mdi:dialpad",
+          "pin": "mdi:form-textbox-password"
+        }
+      },
+      "last_call": {
+        "default": "mdi:phone-clock"
+      },
+      "last_caller": {
+        "default": "mdi:phone-incoming"
+      },
+      "sip_address": {
+        "default": "mdi:phone-voip"
+      }
+    }
+  }
+}
