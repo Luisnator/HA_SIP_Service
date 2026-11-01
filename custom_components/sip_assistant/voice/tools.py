@@ -12,6 +12,7 @@ from homeassistant.helpers import area_registry as ar, floor_registry as fr, llm
 from homeassistant.helpers.json import json_dumps
 import probatio
 
+from ..commands import async_run_detached
 from ..const import DOMAIN, LOGGER, Engine
 from ..settings import AssistantProfile, CommandConfig, Settings
 from ..texts import Phrases
@@ -24,6 +25,9 @@ END_CALL_TOOL = "end_call"
 WEB_SEARCH_TOOL = "web_search"
 COMMAND_TOOL = "run_phone_command"
 LIGHT_DETAILS_TOOL = "get_light_details"
+# How long a tool call waits for Home Assistant before reporting that the
+# action keeps running in the background (e.g. a looping script).
+TOOL_WAIT_TIMEOUT = 8
 _UNSUPPORTED_SCHEMA_KEYS = {"oneOf", "anyOf", "allOf", "enum", "not"}
 # Arguments of HassLightSet that map to mutually exclusive light.turn_on fields
 _EXCLUSIVE_COLOR_ARGS = {"color", "temperature"}
@@ -276,8 +280,26 @@ class ToolBridge:
             return json_dumps({"error": "unknown_tool", "error_text": name})
 
         try:
-            result = await self._api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args))
+            finished, result = await async_run_detached(
+                self._hass,
+                self._api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args)),
+                f"{DOMAIN} tool {name}",
+                TOOL_WAIT_TIMEOUT,
+            )
         except (HomeAssistantError, probatio.Invalid) as err:
             result = llm.ToolResult(data=self._error_data(err), error=True)
+        else:
+            if not finished or result is None:
+                LOGGER.debug("Tool %s keeps running in the background", name)
+                return json_dumps(
+                    {
+                        "data": {
+                            "status": "started",
+                            "info": "The action was started and keeps running in the "
+                            "background. Tell the caller it has started.",
+                        },
+                        "error": False,
+                    }
+                )
         LOGGER.debug("Tool result %s: %s", name, result)
         return json_dumps({"data": result.data, "error": result.error})

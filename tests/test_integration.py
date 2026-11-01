@@ -11,7 +11,8 @@ import wave
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_API_KEY
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
+import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
@@ -492,3 +493,91 @@ async def test_tool_errors_never_end_the_call(hass: HomeAssistant) -> None:
     with patch.object(ToolBridge, "_async_dispatch", side_effect=RuntimeError("boom")):
         broken = json.loads(await bridge.async_call("end_call", "{}"))
     assert broken == {"data": {"error": "RuntimeError", "error_text": "boom"}, "error": True}
+
+
+async def test_long_running_actions_survive_hangup(hass: HomeAssistant) -> None:
+    """Scripts started by the assistant or a keypad command keep running."""
+    import asyncio
+    import json
+
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+    from homeassistant.setup import async_setup_component
+
+    from custom_components.sip_assistant.commands import async_execute_command
+    from custom_components.sip_assistant.const import ActionType
+    from custom_components.sip_assistant.settings import AssistantProfile, CommandConfig, Settings
+    from custom_components.sip_assistant.voice.tools import ToolBridge
+
+    for domain in ("homeassistant", "intent", "llm"):
+        assert await async_setup_component(hass, domain, {})
+    assert await async_setup_component(
+        hass,
+        "script",
+        {"script": {"party_mode": {"alias": "Party Mode", "sequence": [{"delay": 60}]}}},
+    )
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": {
+                "id": "party",
+                "alias": "Party",
+                "triggers": [],
+                "actions": [{"delay": 60}],
+            }
+        },
+    )
+    await hass.async_block_till_done()
+    async_expose_entity(hass, "conversation", "script.party_mode", True)
+
+    async def run_command(command: Any) -> None:
+        raise AssertionError("not expected")
+
+    bridge = ToolBridge(
+        hass,
+        Settings(language="en"),
+        AssistantProfile(id="a", name="Assistant", code="0"),
+        ENGLISH,
+        on_end_call=MagicMock(),
+        run_command=run_command,
+    )
+    await bridge.async_setup()
+    tool = next(spec["name"] for spec in bridge.specs() if spec["name"].endswith("party_mode"))
+
+    # The assistant gets a "started" answer instead of waiting for the loop.
+    with patch("custom_components.sip_assistant.voice.tools.TOOL_WAIT_TIMEOUT", 0.2):
+        output = json.loads(await bridge.async_call(tool, "{}"))
+    assert output == {
+        "data": {
+            "status": "started",
+            "info": "The action was started and keeps running in the background. "
+            "Tell the caller it has started.",
+        },
+        "error": False,
+    }
+    assert hass.states.get("script.party_mode").state == "on"
+
+    # A keypad command triggering a long automation; the caller hangs up while waiting.
+    party = CommandConfig(
+        id="c",
+        name="Party",
+        code="1",
+        action_type=ActionType.ENTITY,
+        entity_id="automation.party",
+    )
+    with patch("custom_components.sip_assistant.commands.ACTIONS_WAIT_TIMEOUT", 5):
+        call = hass.async_create_task(async_execute_command(hass, party, {}, Context()))
+        await asyncio.sleep(0.1)
+        call.cancel()  # the call ends
+        with pytest.raises(asyncio.CancelledError):
+            await call
+    await asyncio.sleep(0.1)
+    assert hass.states.get("automation.party").attributes["current"] == 1
+    assert hass.states.get("script.party_mode").state == "on"
+
+    await hass.services.async_call(
+        "script", "turn_off", {"entity_id": "script.party_mode"}, blocking=True
+    )
+    await hass.services.async_call(
+        "automation", "turn_off", {"entity_id": "automation.party"}, blocking=True
+    )

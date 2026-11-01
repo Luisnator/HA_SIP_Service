@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Coroutine, Iterable
 from enum import Enum
 from typing import Any
 
@@ -17,8 +17,8 @@ from homeassistant.helpers.template import Template
 from .const import DOMAIN, LOGGER, ActionType
 from .settings import ENTITY_SERVICES, CommandConfig
 
-# How long the call waits for custom actions before continuing; the actions
-# keep running in the background afterwards.
+# How long the call waits for a command before continuing; the command keeps
+# running in the background afterwards, also when the call ends.
 ACTIONS_WAIT_TIMEOUT = 10
 
 
@@ -54,13 +54,53 @@ async def async_validate_actions(hass: HomeAssistant, actions: Any) -> list[dict
     return await async_validate_actions_config(hass, cv.SCRIPT_SCHEMA(actions))
 
 
+async def async_run_detached[T](
+    hass: HomeAssistant, coro: Coroutine[Any, Any, T], name: str, wait: float
+) -> tuple[bool, T | None]:
+    """Run work in a Home Assistant task that outlives the call.
+
+    Scripts and automations run inside the task that waits for them, so
+    awaiting them from the call would stop them when the caller hangs up.
+    Waits up to ``wait`` seconds and returns ``(finished, result)``;
+    failures within that time are raised, later ones are logged.
+    """
+    task = hass.async_create_background_task(coro, name, eager_start=True)
+    done, _ = await asyncio.wait({task}, timeout=wait)
+    if task in done:
+        return True, task.result()
+    task.add_done_callback(_log_late_failure)
+    return False, None
+
+
+def _log_late_failure(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled() and (err := task.exception()) is not None:
+        LOGGER.warning("%s failed: %s", task.get_name(), err)
+
+
 async def async_execute_command(
     hass: HomeAssistant,
     command: CommandConfig,
     variables: dict[str, Any],
     context: Context,
 ) -> None:
-    """Run a command. Raises HomeAssistantError when it fails."""
+    """Run a command, waiting briefly for it to finish.
+
+    Raises HomeAssistantError when it fails within the waiting time.
+    """
+    await async_run_detached(
+        hass,
+        _async_run_command(hass, command, variables, context),
+        f"{DOMAIN} command {command.name}",
+        ACTIONS_WAIT_TIMEOUT,
+    )
+
+
+async def _async_run_command(
+    hass: HomeAssistant,
+    command: CommandConfig,
+    variables: dict[str, Any],
+    context: Context,
+) -> None:
     match command.action_type:
         case ActionType.ENTITY:
             if not command.entity_id:
@@ -85,13 +125,6 @@ async def async_execute_command(
                 max_runs=10,
                 logger=LOGGER,
             )
-            task = hass.async_create_task(
-                script.async_run(variables, context),
-                f"{DOMAIN} command {command.name}",
-                eager_start=True,
-            )
-            done, _ = await asyncio.wait({task}, timeout=ACTIONS_WAIT_TIMEOUT)
-            if done:
-                task.result()  # re-raise failures
+            await script.async_run(variables, context)
         case ActionType.ANNOUNCEMENT:
             pass
