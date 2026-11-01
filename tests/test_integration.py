@@ -431,3 +431,64 @@ async def test_light_details_tool(hass: HomeAssistant) -> None:
     )
     await no_access.async_setup()
     assert "get_light_details" not in {spec["name"] for spec in no_access.specs()}
+
+
+async def test_tool_errors_never_end_the_call(hass: HomeAssistant) -> None:
+    """A script tool with an unknown floor returns an error with the valid names."""
+    import json
+
+    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+    from homeassistant.helpers import area_registry as ar, floor_registry as fr
+    from homeassistant.setup import async_setup_component
+
+    from custom_components.sip_assistant.settings import AssistantProfile, Settings
+    from custom_components.sip_assistant.voice.tools import ToolBridge
+
+    for domain in ("homeassistant", "intent", "llm"):
+        assert await async_setup_component(hass, domain, {})
+    fr.async_get(hass).async_create("Erdgeschoss")
+    ar.async_get(hass).async_create("Küche")
+    assert await async_setup_component(
+        hass,
+        "script",
+        {
+            "script": {
+                "licht_etage": {
+                    "alias": "Licht auf einer Etage",
+                    "fields": {"etage": {"selector": {"floor": {}}}},
+                    "sequence": [],
+                }
+            }
+        },
+    )
+    await hass.async_block_till_done()
+    async_expose_entity(hass, "conversation", "script.licht_etage", True)
+
+    async def run_command(command: Any) -> None:
+        raise RuntimeError("broken command")
+
+    bridge = ToolBridge(
+        hass,
+        Settings(language="de"),
+        AssistantProfile(id="a", name="Assistant", code="0"),
+        ENGLISH,
+        on_end_call=MagicMock(),
+        run_command=run_command,
+    )
+    await bridge.async_setup()
+    tool = next(spec["name"] for spec in bridge.specs() if spec["name"].endswith("licht_etage"))
+
+    # Home Assistant raises IndexError for an unknown floor name.
+    failed = json.loads(await bridge.async_call(tool, '{"etage": "Mars"}'))
+    assert failed["error"] is True
+    assert failed["data"]["error"] == "IndexError"
+    assert failed["data"]["known_floors"] == ["Erdgeschoss"]
+    assert failed["data"]["known_areas"] == ["Küche"]
+
+    succeeded = json.loads(await bridge.async_call(tool, '{"etage": "Erdgeschoss"}'))
+    assert succeeded["error"] is False
+
+    # Unexpected errors from our own tools are reported as well.
+    with patch.object(ToolBridge, "_async_dispatch", side_effect=RuntimeError("boom")):
+        broken = json.loads(await bridge.async_call("end_call", "{}"))
+    assert broken == {"data": {"error": "RuntimeError", "error_text": "boom"}, "error": True}
