@@ -8,7 +8,7 @@ from typing import Any
 
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import llm
+from homeassistant.helpers import area_registry as ar, floor_registry as fr, llm
 from homeassistant.helpers.json import json_dumps
 import probatio
 
@@ -204,7 +204,11 @@ class ToolBridge:
         return tools
 
     async def async_call(self, name: str, arguments: str | None) -> str:
-        """Execute a tool call and return the JSON encoded output."""
+        """Execute a tool call and return the JSON encoded output.
+
+        This never raises: every failure goes back to the model as an error it
+        can react to, instead of ending the conversation.
+        """
         try:
             args = json.loads(arguments) if arguments else {}
         except ValueError as err:
@@ -213,7 +217,32 @@ class ToolBridge:
             return json_dumps({"error": "invalid_arguments", "error_text": "Expected an object"})
         args = sanitize_arguments(args)
         LOGGER.debug("Tool call %s(%s)", name, args)
+        try:
+            return await self._async_dispatch(name, args)
+        except Exception as err:  # noqa: BLE001 - a failing tool must not end the call
+            LOGGER.warning("Tool %s(%s) failed: %r", name, args, err)
+            return json_dumps({"data": self._error_data(err), "error": True})
 
+    def _error_data(self, err: Exception) -> dict[str, Any]:
+        """Describe a failed tool call so the model can correct its arguments."""
+        data: dict[str, Any] = {"error": type(err).__name__}
+        if str(err):
+            data["error_text"] = str(err)
+        if isinstance(err, LookupError):
+            # Raised by Home Assistant when an area or floor name does not exist.
+            data["hint"] = (
+                "A name in the arguments could not be found. Use one of the known "
+                "area or floor names exactly."
+            )
+            data["known_floors"] = sorted(
+                floor.name for floor in fr.async_get(self._hass).async_list_floors()
+            )
+            data["known_areas"] = sorted(
+                area.name for area in ar.async_get(self._hass).async_list_areas()
+            )
+        return data
+
+    async def _async_dispatch(self, name: str, args: dict[str, Any]) -> str:
         if name == END_CALL_TOOL:
             self._on_end_call()
             return json_dumps({"success": True})
@@ -249,9 +278,6 @@ class ToolBridge:
         try:
             result = await self._api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args))
         except (HomeAssistantError, probatio.Invalid) as err:
-            data: dict[str, Any] = {"error": type(err).__name__}
-            if str(err):
-                data["error_text"] = str(err)
-            result = llm.ToolResult(data=data, error=True)
+            result = llm.ToolResult(data=self._error_data(err), error=True)
         LOGGER.debug("Tool result %s: %s", name, result)
         return json_dumps({"data": result.data, "error": result.error})
