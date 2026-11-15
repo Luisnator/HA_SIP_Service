@@ -16,6 +16,7 @@ const DEFAULTS: CallOptions = {
   language: "",
   digit_timeout: 3,
   max_call_duration: 15,
+  pickup_delay: 300,
 };
 
 export class SipCallFlowView extends LitElement {
@@ -92,6 +93,13 @@ export class SipCallFlowView extends LitElement {
         name: "max_call_duration",
         required: true,
         selector: { number: { min: 1, max: 120, step: 1, mode: "box", unit_of_measurement: "min" } },
+      },
+      {
+        name: "pickup_delay",
+        required: true,
+        selector: {
+          number: { min: 0, max: 2000, step: 50, mode: "slider", unit_of_measurement: "ms" },
+        },
       },
     ];
   }

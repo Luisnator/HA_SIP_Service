@@ -43,6 +43,8 @@ class SipAssistantGateway:
         self.server = SipServer(settings.sip_server_config(), self)
         self.sessions: dict[str, CallSession] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        # Sessions that finish the assistant's work after the caller hung up
+        self._finishing: set[asyncio.Task[None]] = set()
         self.last_caller: CallerId | None = None
         self.last_call_at: datetime | None = None
 
@@ -54,11 +56,13 @@ class SipAssistantGateway:
     async def async_stop(self) -> None:
         """Stop the server and end all calls."""
         await self.server.stop()
-        for task in list(self._tasks.values()):
+        tasks = [*self._tasks.values(), *self._finishing]
+        for task in tasks:
             task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
+        self._finishing.clear()
 
     @callback
     def async_update_settings(self, settings: Settings) -> None:
@@ -140,7 +144,11 @@ class SipAssistantGateway:
         session = self.sessions.pop(call.call_id, None)
         task = self._tasks.pop(call.call_id, None)
         if task is not None and task is not asyncio.current_task() and not task.done():
-            task.cancel()
+            if session is not None and session.continues_after_hangup:
+                self._finishing.add(task)
+                task.add_done_callback(self._finishing.discard)
+            else:
+                task.cancel()
         if session is not None:
             duration = (dt_util.utcnow() - session.started_at).total_seconds()
             self.fire_event(

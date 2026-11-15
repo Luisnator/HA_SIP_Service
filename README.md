@@ -12,6 +12,8 @@ Assist tools, all configured in a dedicated sidebar panel.
 - 🗣️ Multiple voice assistants, each on its own key, with its own model, voice,
   instructions and permissions (device control, keypad commands, web search)
 - ⚡ Fast interruption: the assistant stops as soon as the caller talks over it
+- 👂 Nothing gets lost: callers can start talking right away, and a request made just
+  before hanging up is still carried out
 - 🖥️ Configuration panel in the sidebar built from Home Assistant's own components
   (entity picker, action editor, template editor), with live status and setup checks
 - 🔐 PIN, SIP digest authentication, network allow list and a maximum call duration
@@ -65,7 +67,7 @@ button on the integration page opens it as well.
 | **Overview** | Live call state, the SIP address to dial (with copy button), last caller, a hang-up button, the complete keypad layout and checks such as a missing API key, missing TTS or risky assistant settings |
 | **Keypad commands** | Create commands with a code, pick what they do, set a spoken confirmation and decide whether they are announced and whether assistants may run them |
 | **Assistants** | Create voice assistant profiles, each with its own key, model, voice, instructions and permissions |
-| **Call flow** | Start with the keypad menu or directly with an assistant, greeting, menu announcement, PIN, TTS engine, language, digit timeout and maximum call duration |
+| **Call flow** | Start with the keypad menu or directly with an assistant, greeting, menu announcement, PIN, TTS engine, language, digit timeout, maximum call duration and how long to ignore handset noise after answering |
 | **Connection** | SIP port, user and password, OpenAI API key, allowed networks, RTP port range, advertised address and number of simultaneous calls |
 
 Changes to commands, assistants and the call flow apply to the next call without
@@ -102,9 +104,22 @@ Per profile you choose:
 - **Run keypad commands** that allow it
 - **Web search** for current information. GPT-Live uses OpenAI's hosted web search in its
   backend; the Realtime API calls a web search function that uses the Responses API.
+- **Greet the caller** (on by default): the assistant speaks first, in the language of its
+  instructions. *Opening words* set exactly what it says, in any language (templates are
+  supported). When off, the assistant just listens and answers whatever the caller says
+  first. If the caller starts talking before the assistant is connected, it answers that
+  instead of greeting.
 - **Fast interruption** (on by default): the integration detects the caller talking over
   the assistant on the phone line and stops playback immediately instead of waiting for
   OpenAI's turn detection. Turn it off if background noise cuts the assistant off.
+- **Finish requests after hanging up** (on by default): if the caller hangs up right after
+  asking for something ("add milk to the shopping list"), the assistant stays connected for
+  up to 15 seconds to carry it out.
+
+What the caller says while the assistant is connecting (up to five seconds) is buffered
+and sent once the session is ready. The call flow setting *Ignore handset noise* (300 ms by
+default) keeps the rattle of lifting the handset from being taken as speech, which matters
+for phones that dial automatically when picked up.
 
 If a profile combines web search with device control or keypad commands, the panel shows a
 warning: web pages can contain hidden instructions (prompt injection) that try to make the
@@ -178,6 +193,8 @@ logger:
 - **Keys are not recognised**: set the softphone's DTMF mode to "RFC 2833/4733" or
   "SIP INFO" (in-band DTMF is not evaluated).
 - **The assistant cuts itself off**: turn off *Fast interruption* for that assistant.
+- **The assistant reacts to the handset being picked up**: raise *Ignore handset noise* in
+  the call flow.
 - **Setup fails because the port is in use**: choose another SIP port, e.g. when the Voice
   over IP integration is active.
 - The diagnostics download (integration page → ⋮ → Download diagnostics) contains the

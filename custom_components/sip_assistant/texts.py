@@ -31,6 +31,7 @@ class Phrases:
     caller_info: str
     commands_intro: str
     greet_instruction: str
+    opening_line_instruction: str
     live_delegation_rules: str
     backend_rules: str
     end_call_description: str
@@ -81,8 +82,15 @@ GERMAN = Phrases(
         "Zusätzlich gibt es diese Telefon-Befehle, die du mit run_phone_command ausführen kannst:"
     ),
     greet_instruction=(
-        "Begrüße den Anrufer jetzt kurz auf Deutsch und frage, wie du helfen "
-        "kannst. Warte danach auf seine Antwort."
+        "Begrüße den Anrufer jetzt in einem kurzen Satz in der Sprache deiner "
+        "Anweisungen und frage, wie du helfen kannst. Hat der Anrufer schon etwas "
+        "gesagt, begrüße ihn nicht, sondern antworte direkt darauf. Warte danach "
+        "auf seine Antwort."
+    ),
+    opening_line_instruction=(
+        "Beginne das Gespräch jetzt mit genau diesen Worten: „{line}“ Hat der "
+        "Anrufer schon etwas gesagt, antworte stattdessen direkt darauf. Warte "
+        "danach auf seine Antwort."
     ),
     live_delegation_rules=(
         "Gib alle Anfragen, für die Werkzeuge, aktuelle Informationen oder "
@@ -163,7 +171,13 @@ ENGLISH = Phrases(
     caller_info="Caller: {caller}.",
     commands_intro="You can also run these phone commands with run_phone_command:",
     greet_instruction=(
-        "Greet the caller now in English and ask how you can help. Then pause and listen."
+        "Greet the caller now in one short sentence in the language of your "
+        "instructions and ask how you can help. If the caller has already said "
+        "something, do not greet but answer it directly. Then pause and listen."
+    ),
+    opening_line_instruction=(
+        'Open the call now with exactly these words: "{line}" If the caller has '
+        "already said something, answer it directly instead. Then pause and listen."
     ),
     live_delegation_rules=(
         "Delegate every request that needs tools, current information or "

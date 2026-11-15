@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.core import HomeAssistant
 
 from ..commands import render_text
@@ -32,11 +34,9 @@ def create_agent(
     allow_menu: bool,
 ) -> VoiceAgent:
     """Create the agent of an assistant profile with its prompts."""
-    persona = render_text(
-        hass,
-        profile.prompt or phrases.default_prompt,
-        {"caller": call.caller.number, "caller_name": call.caller.name},
-    )
+    variables = {"caller": call.caller.number, "caller_name": call.caller.name}
+    persona = render_text(hass, profile.prompt or phrases.default_prompt, variables)
+    opening = _opening(hass, profile, phrases, variables)
     caller = phrases.caller_info.format(caller=call.caller.display)
     menu_hint = phrases.menu_hint if allow_menu else ""
     access = "" if profile.controls_home else phrases.no_home_access
@@ -55,7 +55,7 @@ def create_agent(
             tools.commands_prompt,
         )
         context = AgentContext(
-            hass, settings, profile, phrases, call, tools, instructions, allow_menu
+            hass, settings, profile, phrases, call, tools, instructions, allow_menu, opening
         )
         return RealtimeAgent(context)
 
@@ -65,5 +65,18 @@ def create_agent(
     backend_instructions = _join(
         phrases.backend_rules, access, search, caller, tools.api_prompt, tools.commands_prompt
     )
-    context = AgentContext(hass, settings, profile, phrases, call, tools, instructions, allow_menu)
+    context = AgentContext(
+        hass, settings, profile, phrases, call, tools, instructions, allow_menu, opening
+    )
     return LiveAgent(context, backend_instructions)
+
+
+def _opening(
+    hass: HomeAssistant, profile: AssistantProfile, phrases: Phrases, variables: dict[str, Any]
+) -> str | None:
+    """Return the instruction the assistant opens the call with (None: just listen)."""
+    if not profile.speak_first:
+        return None
+    if profile.opening_line and (line := render_text(hass, profile.opening_line, variables)):
+        return phrases.opening_line_instruction.format(line=line.strip())
+    return phrases.greet_instruction

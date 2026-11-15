@@ -490,6 +490,7 @@ class SipServer(asyncio.DatagramProtocol):
             self._spawn(call.hangup(), "sip_assistant hangup")
             return
         call.established = True
+        call.established_at = asyncio.get_running_loop().time()
         self._listener.call_established(call)
 
     def _handle_cancel(

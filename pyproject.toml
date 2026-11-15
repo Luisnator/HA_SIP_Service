@@ -47,7 +47,7 @@ combine-as-imports = true
 split-on-trailing-comma = false
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ASYNC109", "ASYNC110", "D", "INP001", "PLC0415", "PT018", "S101", "S324", "SLF001"]
+"tests/**" = ["ASYNC109", "ASYNC110", "D", "INP001", "PLC0415", "PLR0917", "PT018", "S101", "S324", "SLF001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
