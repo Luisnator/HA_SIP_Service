@@ -1,0 +1,37 @@
+# Monthly dependency updates as pull requests, one per ecosystem. The Validate
+# workflow checks every pull request before it is merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7 # skip releases younger than a week
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Test requirements. The extra pins follow the Home Assistant version of
+  # pytest-homeassistant-custom-component; the tests show when they do not fit.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      test-requirements:
+        patterns: ["*"]
+
+  # Panel. The bundle is committed, so the "frontend" check fails until it is
+  # rebuilt with `npm run build` when an update changes the output.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      frontend:
+        patterns: ["*"]
