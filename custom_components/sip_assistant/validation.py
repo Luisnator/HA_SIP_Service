@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_ENTITY_ID, CONF_NAME
 from homeassistant.core import HomeAssistant, split_entity_id
 from homeassistant.exceptions import HomeAssistantError, TemplateError
+from homeassistant.helpers import llm
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.template import Template
 import probatio
@@ -85,6 +86,7 @@ from .const import (
 )
 from .defaults import new_id
 from .settings import ENTITY_SERVICES, parse_networks
+from .voice.tools import usable_llm_apis
 
 SIP_USER_PATTERN = re.compile(r"^[A-Za-z0-9._~+-]{1,64}$")
 
@@ -234,6 +236,10 @@ def validate_assistant(
     llm_api = item.get(CONF_LLM_HASS_API) or []
     if isinstance(llm_api, str):
         llm_api = [llm_api]
+    # APIs that need an administrator cannot be used during a call.
+    usable = {api.id for api in usable_llm_apis(hass)}
+    admin_only = {api.id for api in llm.async_get_apis(hass)} - usable
+    llm_api = [api for api in llm_api if api not in admin_only]
     prompt = _text(item, CONF_PROMPT)
     opening_line = _text(item, CONF_OPENING_LINE)
     _template(hass, prompt, CONF_PROMPT, errors)

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.const import CONF_API_KEY, CONF_ENTITY_ID, CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sip_assistant.const import (
@@ -73,6 +75,17 @@ def update_options(
     if api_key is not None:
         data[CONF_API_KEY] = api_key
     hass.config_entries.async_update_entry(entry, options=options, data=data)
+
+
+@dataclass(slots=True, kw_only=True)
+class AdminOnlyAPI(llm.API):
+    """An LLM API that needs an administrator, like "Home Assistant" (2026.11+)."""
+
+    requires_admin: bool = True
+
+    async def async_get_api_instance(self, llm_context: llm.LLMContext) -> llm.APIInstance:
+        """Fail: admin-only APIs must never be loaded during a call."""
+        raise AssertionError("admin-only API loaded")
 
 
 async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:

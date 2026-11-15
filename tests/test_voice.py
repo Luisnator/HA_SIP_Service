@@ -8,11 +8,12 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 import json
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import llm
 from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
@@ -24,8 +25,9 @@ from custom_components.sip_assistant.sip.call import EndReason
 from custom_components.sip_assistant.texts import ENGLISH
 from custom_components.sip_assistant.voice.agent import AgentContext
 from custom_components.sip_assistant.voice.realtime import RealtimeAgent
+from custom_components.sip_assistant.voice.tools import ToolBridge
 
-from .helpers import SENSOR, assistant, command, update_options, wait_for
+from .helpers import SENSOR, AdminOnlyAPI, assistant, command, update_options, wait_for
 from .phone import FakePhone
 
 type Script = Callable[[web.WebSocketResponse], Awaitable[None]]
@@ -945,3 +947,27 @@ async def test_hangup_ends_session_when_finishing_is_off(
         await asyncio.wait_for(openai_server["done"].wait(), 5)
 
     assert seen["events"][-1]["type"] == "session.close"
+
+
+async def test_tool_bridge_skips_unusable_llm_apis(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Admin-only or missing APIs are skipped instead of disabling device control."""
+    assert await async_setup_component(hass, "llm", {})
+    llm.async_register_api(hass, AdminOnlyAPI(hass=hass, id="admin_api", name="Admin"))
+    profile = AssistantProfile.from_data(
+        assistant("0", llm_hass_api=[llm.LLM_API_ASSIST, "admin_api", "gone"])
+    )
+    bridge = ToolBridge(
+        hass,
+        Settings(),
+        profile,
+        ENGLISH,
+        on_end_call=lambda: None,
+        run_command=AsyncMock(),
+    )
+    await bridge.async_setup()
+
+    names = {spec["name"] for spec in bridge.specs()}
+    assert "llm__GetDateTime" in names  # the Assist ("Device control") tools
+    assert "admin_api, gone" in caplog.text

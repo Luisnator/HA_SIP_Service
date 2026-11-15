@@ -100,8 +100,10 @@ Per profile you choose:
 - **Model**: *GPT-Live* (full-duplex voice model that hands tool use to a fast backend
   model) or the *Realtime API* (one speech-to-speech model that uses the tools itself)
 - **Voice** and **instructions** (templates with `caller` and `caller_name` are supported)
-- **Control devices** through the selected Home Assistant APIs (*Assist* only sees
-  entities exposed to Assist)
+- **Control devices** through the selected Home Assistant APIs: *Device control* (called
+  *Assist* before Home Assistant 2026.11) only sees entities exposed to Assist. APIs that
+  require an administrator, such as *Home Assistant* for managing automations and
+  integrations, are not offered: a call has no signed-in user.
 - **Run keypad commands** that allow it
 - **Web search** for current information. GPT-Live uses OpenAI's hosted web search in its
   backend; the Realtime API calls a web search function that uses the Responses API.

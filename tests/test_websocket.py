@@ -10,6 +10,8 @@ from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_API_KEY, CONF_ENTITY_ID, CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import llm
+from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -28,7 +30,7 @@ from custom_components.sip_assistant.const import (
 )
 
 from .conftest import free_udp_port
-from .helpers import assistant, command, setup, update_options
+from .helpers import AdminOnlyAPI, assistant, command, setup, update_options
 
 
 async def _ws(hass_ws_client, hass: HomeAssistant, **msg: Any) -> dict[str, Any]:
@@ -116,6 +118,38 @@ async def test_serialize_fills_new_defaults(
     assert settings.pickup_delay == 300
     assert settings.assistants[0].speak_first is True
     assert settings.assistants[0].finish_after_hangup is True
+
+
+async def test_admin_only_llm_apis_are_not_offered(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, hass_ws_client
+) -> None:
+    """APIs that need an administrator are neither listed nor stored."""
+    assert await async_setup_component(hass, "llm", {})
+    llm.async_register_api(hass, AdminOnlyAPI(hass=hass, id="admin_api", name="Admin"))
+    await setup(hass, mock_config_entry)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id({"type": "sip_assistant/config"})
+    response = await client.receive_json()
+    api_ids = {api["id"] for api in response["result"]["config"]["info"]["llm_apis"]}
+    assert llm.LLM_API_ASSIST in api_ids
+    assert "admin_api" not in api_ids
+
+    await client.send_json_auto_id(
+        {
+            "type": "sip_assistant/save_item",
+            "entry_id": mock_config_entry.entry_id,
+            "kind": "assistant",
+            "item": {
+                "name": "Haus",
+                "code": "5",
+                "llm_hass_api": [llm.LLM_API_ASSIST, "admin_api"],
+            },
+        }
+    )
+    response = await client.receive_json()
+    saved = next(item for item in response["result"]["config"]["assistants"] if item["code"] == "5")
+    assert saved["llm_hass_api"] == [llm.LLM_API_ASSIST]
 
 
 async def test_requires_admin(

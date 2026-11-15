@@ -8,7 +8,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er, llm
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 import probatio
 
@@ -44,6 +44,7 @@ from .validation import (
     validate_call,
     validate_network,
 )
+from .voice.tools import usable_llm_apis
 
 KIND_SECTIONS = {"command": SECTION_COMMANDS, "assistant": SECTION_ASSISTANTS}
 SECTIONS = ("call", "network", "connection")
@@ -117,7 +118,7 @@ async def _serialize(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
             if loaded
             else None,
             "voip_loaded": "voip" in hass.config.components,
-            "llm_apis": [{"id": api.id, "name": api.name} for api in llm.async_get_apis(hass)],
+            "llm_apis": [{"id": api.id, "name": api.name} for api in usable_llm_apis(hass)],
             "entity_domains": sorted(ENTITY_SERVICES),
             "voices": REALTIME_VOICES,
             "live_models": LIVE_MODELS,
