@@ -24,8 +24,7 @@ updates:
       test-requirements:
         patterns: ["*"]
 
-  # Panel. The bundle is committed, so the "frontend" check fails until it is
-  # rebuilt with `npm run build` when an update changes the output.
+  # Panel (built into the release zip when a release is published)
   - package-ecosystem: npm
     directory: /frontend
     schedule:
