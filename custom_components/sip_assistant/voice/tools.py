@@ -33,6 +33,16 @@ _UNSUPPORTED_SCHEMA_KEYS = {"oneOf", "anyOf", "allOf", "enum", "not"}
 _EXCLUSIVE_COLOR_ARGS = {"color", "temperature"}
 
 
+def usable_llm_apis(hass: HomeAssistant) -> list[llm.API]:
+    """Return the Home Assistant LLM APIs a phone assistant can use.
+
+    APIs that require an administrator are left out, such as "Home Assistant"
+    (2026.11+), which manages automations and integrations: a call has no
+    signed-in user, and callers should not manage Home Assistant itself.
+    """
+    return [api for api in llm.async_get_apis(hass) if not getattr(api, "requires_admin", False)]
+
+
 def format_llm_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
 ) -> dict[str, Any]:
@@ -113,6 +123,18 @@ class ToolBridge:
         """Load the Home Assistant LLM APIs the profile may use."""
         if not self._profile.home_control or not self._profile.llm_hass_api:
             return
+        usable = {api.id for api in usable_llm_apis(self._hass)}
+        api_ids = [api_id for api_id in self._profile.llm_hass_api if api_id in usable]
+        if skipped := [api_id for api_id in self._profile.llm_hass_api if api_id not in usable]:
+            # Loading them would fail and take the usable APIs down with them.
+            LOGGER.warning(
+                "Assistant %s skips the LLM APIs %s: they are not available or "
+                "need a signed-in administrator",
+                self._profile.name,
+                ", ".join(skipped),
+            )
+        if not api_ids:
+            return
         llm_context = llm.LLMContext(
             platform=DOMAIN,
             context=self.context,
@@ -121,11 +143,9 @@ class ToolBridge:
             device_id=None,
         )
         try:
-            self._api = await llm.async_get_api(
-                self._hass, list(self._profile.llm_hass_api), llm_context
-            )
+            self._api = await llm.async_get_api(self._hass, api_ids, llm_context)
         except HomeAssistantError as err:
-            LOGGER.error("Could not load LLM API %s: %s", self._profile.llm_hass_api, err)
+            LOGGER.error("Could not load LLM API %s: %s", api_ids, err)
 
     @property
     def api_prompt(self) -> str:
