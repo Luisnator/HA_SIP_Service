@@ -36,7 +36,24 @@ Assist tools, all configured in a dedicated sidebar panel.
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace (Home Assistant 2026.11 and newer, recommended)
+
+Since Home Assistant 2026.11, HACS is built in as the **Marketplace**. SIP Assistant is not
+in its catalog, so add it from its GitHub link:
+
+1. Open **Settings → Marketplace**. The first time, read and accept the notice; until
+   then the Marketplace does not install anything.
+2. Choose **⋮ → Custom repositories → Add from link**, enter
+   `https://github.com/Luisnator/HA_SIP_Service` and pick the type *Integration*. Adding a
+   repository needs a GitHub connection; the Marketplace asks you to connect GitHub if it
+   is not connected yet.
+3. Open **SIP Assistant** in the Marketplace, install it and restart Home Assistant.
+
+New versions show up as updates in the Marketplace. If you installed SIP Assistant
+through HACS before, the Marketplace takes it over automatically when you update Home
+Assistant to 2026.11.
+
+### HACS (Home Assistant 2026.10)
 
 1. HACS → ⋮ → *Custom repositories* → `https://github.com/Luisnator/HA_SIP_Service`,
    type *Integration*.
@@ -227,7 +244,7 @@ npm run build
 
 Releases: bump `version` in `manifest.json` and publish a GitHub release with the
 matching tag (e.g. `v0.3.1`). The *Release* workflow builds the panel and attaches the
-integration as `sip_assistant.zip`, which HACS installs.
+integration as `sip_assistant.zip`, which the Marketplace (and HACS) installs.
 
 | Path | Contents |
 | --- | --- |
