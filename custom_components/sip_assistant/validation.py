@@ -37,6 +37,7 @@ from .const import (
     CONF_ENGINE,
     CONF_EXTERNAL_HOST,
     CONF_FAST_INTERRUPT,
+    CONF_FINISH_AFTER_HANGUP,
     CONF_GREETING,
     CONF_HOME_CONTROL,
     CONF_ID,
@@ -46,7 +47,9 @@ from .const import (
     CONF_MAX_CALL_DURATION,
     CONF_MAX_CALLS,
     CONF_MENU_PROMPT,
+    CONF_OPENING_LINE,
     CONF_PHONE_COMMANDS,
+    CONF_PICKUP_DELAY,
     CONF_PIN,
     CONF_PROMPT,
     CONF_REALTIME_MODEL,
@@ -57,17 +60,20 @@ from .const import (
     CONF_SIP_PASSWORD,
     CONF_SIP_PORT,
     CONF_SIP_USER,
+    CONF_SPEAK_FIRST,
     CONF_START,
     CONF_TTS_ENGINE,
     CONF_VOICE,
     CONF_WEB_SEARCH,
     DEFAULT_BACKEND_MODEL,
     DEFAULT_LIVE_MODEL,
+    DEFAULT_PICKUP_DELAY,
     DEFAULT_REALTIME_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_VOICE,
     DOMAIN,
     LOGGER,
+    MAX_PICKUP_DELAY,
     OPENAI_BASE_URL,
     PIN_PATTERN,
     REASONING_EFFORTS,
@@ -108,9 +114,10 @@ def _number(
     maximum: float,
     *,
     integer: bool = True,
+    default: float | None = None,
 ) -> float:
     try:
-        number = float(values[key])
+        number = float(values[key] if default is None else values.get(key, default))
     except KeyError, TypeError, ValueError:
         errors[key] = "invalid_number"
         return minimum
@@ -228,7 +235,9 @@ def validate_assistant(
     if isinstance(llm_api, str):
         llm_api = [llm_api]
     prompt = _text(item, CONF_PROMPT)
+    opening_line = _text(item, CONF_OPENING_LINE)
     _template(hass, prompt, CONF_PROMPT, errors)
+    _template(hass, opening_line, CONF_OPENING_LINE, errors)
     if errors:
         raise ValidationError(errors)
     return {
@@ -243,6 +252,9 @@ def validate_assistant(
         CONF_PHONE_COMMANDS: bool(item.get(CONF_PHONE_COMMANDS, True)),
         CONF_WEB_SEARCH: bool(item.get(CONF_WEB_SEARCH, False)),
         CONF_FAST_INTERRUPT: bool(item.get(CONF_FAST_INTERRUPT, True)),
+        CONF_SPEAK_FIRST: bool(item.get(CONF_SPEAK_FIRST, True)),
+        CONF_OPENING_LINE: opening_line,
+        CONF_FINISH_AFTER_HANGUP: bool(item.get(CONF_FINISH_AFTER_HANGUP, True)),
         CONF_ANNOUNCE: bool(item.get(CONF_ANNOUNCE, True)),
         CONF_LIVE_MODEL: _text(item, CONF_LIVE_MODEL) or DEFAULT_LIVE_MODEL,
         CONF_BACKEND_MODEL: _text(item, CONF_BACKEND_MODEL) or DEFAULT_BACKEND_MODEL,
@@ -281,6 +293,9 @@ def validate_call(
         CONF_LANGUAGE: _text(values, CONF_LANGUAGE),
         CONF_DIGIT_TIMEOUT: _number(values, CONF_DIGIT_TIMEOUT, errors, 1, 10, integer=False),
         CONF_MAX_CALL_DURATION: _number(values, CONF_MAX_CALL_DURATION, errors, 1, 120),
+        CONF_PICKUP_DELAY: _number(
+            values, CONF_PICKUP_DELAY, errors, 0, MAX_PICKUP_DELAY, default=DEFAULT_PICKUP_DELAY
+        ),
     }
     if errors:
         raise ValidationError(errors)

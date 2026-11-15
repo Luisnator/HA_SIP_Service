@@ -54,6 +54,9 @@ export interface Assistant {
   phone_commands: boolean;
   web_search: boolean;
   fast_interrupt: boolean;
+  speak_first: boolean;
+  opening_line?: string;
+  finish_after_hangup: boolean;
   announce: boolean;
   live_model: string;
   backend_model: string;
@@ -71,6 +74,7 @@ export interface CallOptions {
   language?: string;
   digit_timeout: number;
   max_call_duration: number;
+  pickup_delay: number;
 }
 
 export interface NetworkOptions {

@@ -67,6 +67,11 @@ class CallSession:
         call.dtmf_handler = self._on_dtmf
 
     @property
+    def continues_after_hangup(self) -> bool:
+        """Return True when the assistant finishes its work after the caller hung up."""
+        return self._agent is not None and self._agent.finishes_after_hangup
+
+    @property
     def event_data(self) -> dict[str, Any]:
         """Return data attached to events about this call."""
         return {"call_id": self.call.call_id, **self.variables}
@@ -82,7 +87,10 @@ class CallSession:
                 raise
             LOGGER.info("Call %s reached the maximum duration", self.call.call_id)
             self._agent = None
-            await self._say(self.phrases.max_duration, interruptible=False, fallback=Tone.GOODBYE)
+            if self.call.is_active:
+                await self._say(
+                    self.phrases.max_duration, interruptible=False, fallback=Tone.GOODBYE
+                )
         finally:
             if self.call.is_active:
                 await self.call.hangup()
@@ -292,6 +300,8 @@ class CallSession:
             self._agent = None
             self.assistant = None
         LOGGER.debug("Voice assistant %s finished: %s", profile.name, result)
+        if not self.call.is_active:
+            return None
 
         match result:
             case AgentExit.HANGUP:

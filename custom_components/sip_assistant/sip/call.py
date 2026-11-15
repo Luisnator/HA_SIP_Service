@@ -90,6 +90,7 @@ class SipCall:
         )
         self.dtmf_handler: Callable[[str], None] | None = None
         self.established = False
+        self.established_at: float | None = None  # event loop time
         self.terminated = asyncio.Event()
         self.end_reason: EndReason | None = None
         self.ack_event = asyncio.Event()

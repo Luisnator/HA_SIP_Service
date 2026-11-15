@@ -14,11 +14,16 @@ import probatio
 
 from .const import (
     BACKEND_MODELS,
+    CONF_FINISH_AFTER_HANGUP,
     CONF_ID,
+    CONF_OPENING_LINE,
+    CONF_PICKUP_DELAY,
     CONF_SIP_PASSWORD,
     CONF_SIP_PORT,
     CONF_SIP_USER,
+    CONF_SPEAK_FIRST,
     CONF_START,
+    DEFAULT_PICKUP_DELAY,
     DOMAIN,
     LIVE_MODELS,
     REALTIME_MODELS,
@@ -50,6 +55,12 @@ _ENTITIES = {
     "sip_address": Platform.SENSOR,
     "call_event": Platform.EVENT,
     "hang_up": Platform.BUTTON,
+}
+# Settings added after profiles were first stored
+_ASSISTANT_DEFAULTS = {
+    CONF_SPEAK_FIRST: True,
+    CONF_OPENING_LINE: "",
+    CONF_FINISH_AFTER_HANGUP: True,
 }
 
 
@@ -92,10 +103,12 @@ async def _serialize(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
             "has_api_key": bool(api_key),
             "api_key_hint": f"…{api_key[-4:]}" if len(api_key) > 8 else "",
         },
-        "call": dict(entry.options.get(SECTION_CALL, {})),
+        "call": {CONF_PICKUP_DELAY: DEFAULT_PICKUP_DELAY, **entry.options.get(SECTION_CALL, {})},
         "network": dict(entry.options.get(SECTION_NETWORK, {})),
         "commands": list(entry.options.get(SECTION_COMMANDS, [])),
-        "assistants": list(entry.options.get(SECTION_ASSISTANTS, [])),
+        "assistants": [
+            {**_ASSISTANT_DEFAULTS, **item} for item in entry.options.get(SECTION_ASSISTANTS, [])
+        ],
         "info": {
             "version": str(integration.version),
             "language": hass.config.language,

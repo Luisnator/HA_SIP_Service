@@ -35,6 +35,7 @@ CONF_TTS_ENGINE: Final = "tts_engine"
 CONF_LANGUAGE: Final = "language"
 CONF_DIGIT_TIMEOUT: Final = "digit_timeout"
 CONF_MAX_CALL_DURATION: Final = "max_call_duration"
+CONF_PICKUP_DELAY: Final = "pickup_delay"  # ms of caller audio ignored after answering
 
 # Assistant profiles
 CONF_ENGINE: Final = "engine"
@@ -49,6 +50,9 @@ CONF_HOME_CONTROL: Final = "home_control"
 CONF_PHONE_COMMANDS: Final = "phone_commands"
 CONF_WEB_SEARCH: Final = "web_search"
 CONF_FAST_INTERRUPT: Final = "fast_interrupt"
+CONF_SPEAK_FIRST: Final = "speak_first"
+CONF_OPENING_LINE: Final = "opening_line"
+CONF_FINISH_AFTER_HANGUP: Final = "finish_after_hangup"
 
 # Network options
 CONF_ALLOWED_NETWORKS: Final = "allowed_networks"
@@ -121,6 +125,8 @@ START_MENU: Final = "menu"
 DEFAULT_ASSISTANT_CODE: Final = "0"
 DEFAULT_DIGIT_TIMEOUT: Final = 3.0
 DEFAULT_MAX_CALL_DURATION: Final = 15  # minutes
+DEFAULT_PICKUP_DELAY: Final = 300  # milliseconds
+MAX_PICKUP_DELAY: Final = 2000
 DEFAULT_ENGINE: Final = Engine.LIVE
 DEFAULT_VOICE: Final = "marin"
 DEFAULT_LIVE_MODEL: Final = "gpt-live-1"

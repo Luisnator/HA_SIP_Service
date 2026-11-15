@@ -18,7 +18,13 @@ const ENGINES: { engine: Engine; icon: string }[] = [
   { engine: "realtime", icon: "mdi:waveform" },
 ];
 
-type Toggle = "home_control" | "phone_commands" | "web_search" | "fast_interrupt";
+type Toggle =
+  | "home_control"
+  | "phone_commands"
+  | "web_search"
+  | "speak_first"
+  | "fast_interrupt"
+  | "finish_after_hangup";
 
 export const isRisky = (assistant: Assistant): boolean =>
   assistant.web_search &&
@@ -257,7 +263,14 @@ export class SipAssistantsView extends LitElement {
             : nothing}
 
           <div class="section-title">${this.localize("assistants.behaviour")}</div>
+          ${this._switch("speak_first", "mdi:hand-wave-outline")}
+          ${draft.speak_first
+            ? html`<div class="nested">
+                ${this._form([{ name: "opening_line", selector: { text: {} } }], errors)}
+              </div>`
+            : nothing}
           ${this._switch("fast_interrupt", "mdi:hand-back-left-outline")}
+          ${this._switch("finish_after_hangup", "mdi:phone-hangup-outline")}
 
           <ha-expansion-panel outlined .header=${this.localize("assistants.advanced")}>
             ${this._form(
@@ -379,6 +392,9 @@ export class SipAssistantsView extends LitElement {
       phone_commands: false,
       web_search: false,
       fast_interrupt: true,
+      speak_first: true,
+      opening_line: "",
+      finish_after_hangup: true,
       announce: true,
       live_model: info.live_models[0],
       backend_model: info.backend_models[0],

@@ -28,6 +28,8 @@ class LiveAgent(VoiceAgent):
         super().__init__(context)
         self._backend_instructions = backend_instructions
         self._pending_calls: dict[str, list[asyncio.Task[None]]] = {}
+        # Delegations whose backend response has not completed yet
+        self._active_delegations: set[str] = set()
         self._closed = asyncio.Event()
         self._caller_transcript: list[str] = []
         self._assistant_transcript: list[str] = []
@@ -50,33 +52,24 @@ class LiveAgent(VoiceAgent):
             responses["tools"].append({"type": "web_search"})
         if profile.reasoning_effort:
             responses["reasoning"] = {"effort": profile.reasoning_effort}
-        await self._send(
-            {
-                "type": "session.start",
-                "event_id": "session_start",
-                "session": {
-                    "model": profile.live_model,
-                    "instructions": self.context.instructions,
-                    "audio": {
-                        "format": {"type": self.rtp.codec.openai_format, "rate": 8000},
-                        "output": {"voice": profile.voice},
-                    },
-                    "input": [
-                        {
-                            "type": "message",
-                            "role": "developer",
-                            "content": [
-                                {
-                                    "type": "input_text",
-                                    "text": self.context.phrases.greet_instruction,
-                                }
-                            ],
-                        }
-                    ],
-                    "delegation": {"type": "responses", "responses": responses},
-                },
-            }
-        )
+        session: dict[str, Any] = {
+            "model": profile.live_model,
+            "instructions": self.context.instructions,
+            "audio": {
+                "format": {"type": self.rtp.codec.openai_format, "rate": 8000},
+                "output": {"voice": profile.voice},
+            },
+            "delegation": {"type": "responses", "responses": responses},
+        }
+        if opening := self._opening:
+            session["input"] = [
+                {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": opening}],
+                }
+            ]
+        await self._send({"type": "session.start", "event_id": "session_start", "session": session})
 
     async def _send_audio(self, audio_b64: str) -> None:
         await self._send({"type": "session.input_audio.append", "audio": audio_b64})
@@ -101,14 +94,15 @@ class LiveAgent(VoiceAgent):
                 )
             case "session.started":
                 LOGGER.debug("GPT-Live session %s started", (event.get("session") or {}).get("id"))
-                await self._send(
-                    {
-                        "type": "session.commentary.append",
-                        "event_id": "greeting",
-                        "delegation_id": None,
-                        "content": self.context.phrases.greet_instruction,
-                    }
-                )
+                if opening := self._opening:
+                    await self._send(
+                        {
+                            "type": "session.commentary.append",
+                            "event_id": "greeting",
+                            "delegation_id": None,
+                            "content": opening,
+                        }
+                    )
                 self._ready.set()
             case "session.delegation.created":
                 LOGGER.debug("GPT-Live delegated a task: %s", event.get("delegation"))
@@ -119,20 +113,28 @@ class LiveAgent(VoiceAgent):
             case "error":
                 self._log_error(event)
 
+    def _busy(self) -> bool:
+        return super()._busy() or bool(self._active_delegations)
+
     async def _handle_backend_event(self, delegation_id: str, event: dict[str, Any]) -> None:
         event_type = event.get("type")
+        if event_type not in _COMPLETED_RESPONSE_EVENTS:
+            self._active_delegations.add(delegation_id)
         if event_type == "response.output_item.done":
             item = event.get("item") or {}
             if item.get("type") == "function_call":
-                task = self._create_task(self._run_tool(item), "tool call")
+                task = self._start_tool(item)
                 self._pending_calls.setdefault(delegation_id, []).append(task)
         elif event_type in _COMPLETED_RESPONSE_EVENTS:
             if event_type == "response.failed":
                 LOGGER.warning("GPT-Live backend response failed: %s", event.get("response"))
             tasks = self._pending_calls.pop(delegation_id, [])
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-                await self._send({"type": "response.create"})
+            if not tasks:
+                self._active_delegations.discard(delegation_id)
+                return
+            # The delegation continues with the tool results.
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await self._send({"type": "response.create"})
         elif event_type == "error":
             self._log_error(event)
 

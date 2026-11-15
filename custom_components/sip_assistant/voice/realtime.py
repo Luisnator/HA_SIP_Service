@@ -21,6 +21,8 @@ class RealtimeAgent(VoiceAgent):
         self._current_item: str | None = None
         self._interrupted_items: set[str] = set()
         self._response_active = False
+        self._awaiting_response = False
+        self._caller_speaking = False
         self._item_audio_ms: dict[str, int] = {}
         self._pending_calls: dict[str, list[asyncio.Task[None]]] = {}
 
@@ -50,13 +52,8 @@ class RealtimeAgent(VoiceAgent):
                 },
             }
         )
-        # Let the assistant speak first.
-        await self._send(
-            {
-                "type": "response.create",
-                "response": {"instructions": self.context.phrases.greet_instruction},
-            }
-        )
+        if opening := self._opening:
+            await self._send({"type": "response.create", "response": {"instructions": opening}})
         self._ready.set()
 
     async def _send_audio(self, audio_b64: str) -> None:
@@ -76,17 +73,24 @@ class RealtimeAgent(VoiceAgent):
                     )
                 self._play(event["delta"], item_id)
             case "input_audio_buffer.speech_started":
+                self._caller_speaking = True
                 await self._interrupt()
+            case "input_audio_buffer.speech_stopped":
+                self._caller_speaking = False
+            case "input_audio_buffer.committed":
+                self._awaiting_response = True  # turn detection creates the answer
             case "response.output_item.done":
                 item = event.get("item") or {}
                 if item.get("type") == "function_call":
                     response_id = event.get("response_id", "")
-                    task = self._create_task(self._run_tool(item), "tool call")
+                    task = self._start_tool(item)
                     self._pending_calls.setdefault(response_id, []).append(task)
             case "response.created":
                 self._response_active = True
+                self._awaiting_response = False
             case "response.done":
                 self._response_active = False
+                self._awaiting_response = False
                 await self._response_done(event.get("response") or {})
             case "response.output_audio_transcript.done":
                 LOGGER.debug("Assistant said: %s", event.get("transcript"))
@@ -123,6 +127,14 @@ class RealtimeAgent(VoiceAgent):
             await self._send({"type": "response.cancel"})
         await self._interrupt()
 
+    def _busy(self) -> bool:
+        return (
+            super()._busy()
+            or self._response_active
+            or self._awaiting_response
+            or self._caller_speaking
+        )
+
     async def _run_tool(self, item: dict[str, Any]) -> None:
         output = await self.context.tools.async_call(item.get("name", ""), item.get("arguments"))
         await self._send(
@@ -145,4 +157,5 @@ class RealtimeAgent(VoiceAgent):
         await asyncio.gather(*tasks, return_exceptions=True)
         if self._hangup_requested:
             return
+        self._awaiting_response = True
         await self._send({"type": "response.create"})

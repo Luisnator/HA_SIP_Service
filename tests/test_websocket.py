@@ -75,6 +75,32 @@ async def test_get_config(
     assert len(config["assistants"]) == 1
 
 
+async def test_serialize_fills_new_defaults(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, hass_ws_client
+) -> None:
+    """Profiles and call settings stored by older versions get the new defaults."""
+    legacy = assistant("0")
+    for key in ("speak_first", "opening_line", "finish_after_hangup"):
+        legacy.pop(key)
+    options = {**mock_config_entry.options, SECTION_ASSISTANTS: [legacy]}
+    options[SECTION_CALL] = {
+        key: value for key, value in options[SECTION_CALL].items() if key != "pickup_delay"
+    }
+    hass.config_entries.async_update_entry(mock_config_entry, options=options)
+    await setup(hass, mock_config_entry)
+
+    response = await _ws(hass_ws_client, hass, type="sip_assistant/config")
+    (profile,) = response["result"]["config"]["assistants"]
+    assert profile["speak_first"] is True
+    assert profile["opening_line"] == ""
+    assert profile["finish_after_hangup"] is True
+    assert response["result"]["config"]["call"]["pickup_delay"] == 300
+    settings = mock_config_entry.runtime_data.settings
+    assert settings.pickup_delay == 300
+    assert settings.assistants[0].speak_first is True
+    assert settings.assistants[0].finish_after_hangup is True
+
+
 async def test_requires_admin(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
@@ -174,9 +200,13 @@ async def test_save_assistant_and_start(
             "web_search": True,
             "fast_interrupt": False,
             "reasoning_effort": "bogus",
+            "opening_line": "Hej {{ caller",
         },
     )
-    assert result["errors"] == {"reasoning_effort": "invalid_option"}
+    assert result["errors"] == {
+        "reasoning_effort": "invalid_option",
+        "opening_line": "invalid_template",
+    }
     result = await call(
         type="sip_assistant/save_item",
         kind="assistant",
@@ -188,6 +218,9 @@ async def test_save_assistant_and_start(
             "phone_commands": False,
             "web_search": True,
             "fast_interrupt": False,
+            "speak_first": False,
+            "opening_line": " Hej {{ caller_name }} ",
+            "finish_after_hangup": False,
         },
     )
     research = next(item for item in result["config"]["assistants"] if item["name"] == "Recherche")
@@ -200,16 +233,20 @@ async def test_save_assistant_and_start(
     assert profile.fast_interrupt is False
     assert profile.controls_home is False
     assert profile.risky is False
+    assert profile.speak_first is False
+    assert profile.opening_line == "Hej {{ caller_name }}"
+    assert profile.finish_after_hangup is False
 
     result = await call(
         type="sip_assistant/save_section",
         section="call",
-        values={"start": research["id"], "pin": "12"},
+        values={"start": research["id"], "pin": "12", "pickup_delay": 5000},
     )
     assert result["errors"] == {
         "pin": "invalid_pin",
         "digit_timeout": "invalid_number",
         "max_call_duration": "invalid_number",
+        "pickup_delay": "invalid_number",
     }
     result = await call(
         type="sip_assistant/save_section",
@@ -217,6 +254,8 @@ async def test_save_assistant_and_start(
         values={"start": research["id"], "digit_timeout": 2.5, "max_call_duration": 10},
     )
     assert result["config"]["call"]["start"] == research["id"]
+    assert result["config"]["call"]["pickup_delay"] == 300  # default when not sent
+    assert mock_config_entry.runtime_data.settings.pickup_delay == 300
 
     result = await call(type="sip_assistant/delete_item", kind="assistant", item_id=research["id"])
     assert result["config"]["call"]["start"] == "menu"

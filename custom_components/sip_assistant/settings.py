@@ -25,6 +25,7 @@ from .const import (
     CONF_ENGINE,
     CONF_EXTERNAL_HOST,
     CONF_FAST_INTERRUPT,
+    CONF_FINISH_AFTER_HANGUP,
     CONF_GREETING,
     CONF_HOME_CONTROL,
     CONF_ID,
@@ -34,7 +35,9 @@ from .const import (
     CONF_MAX_CALL_DURATION,
     CONF_MAX_CALLS,
     CONF_MENU_PROMPT,
+    CONF_OPENING_LINE,
     CONF_PHONE_COMMANDS,
+    CONF_PICKUP_DELAY,
     CONF_PIN,
     CONF_PROMPT,
     CONF_REALTIME_MODEL,
@@ -45,6 +48,7 @@ from .const import (
     CONF_SIP_PASSWORD,
     CONF_SIP_PORT,
     CONF_SIP_USER,
+    CONF_SPEAK_FIRST,
     CONF_START,
     CONF_TTS_ENGINE,
     CONF_VOICE,
@@ -56,6 +60,7 @@ from .const import (
     DEFAULT_LIVE_MODEL,
     DEFAULT_MAX_CALL_DURATION,
     DEFAULT_MAX_CALLS,
+    DEFAULT_PICKUP_DELAY,
     DEFAULT_REALTIME_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_RTP_PORT_END,
@@ -143,6 +148,9 @@ class AssistantProfile:
     phone_commands: bool = True
     web_search: bool = False
     fast_interrupt: bool = True
+    speak_first: bool = True
+    opening_line: str | None = None
+    finish_after_hangup: bool = True
     announce: bool = True
     live_model: str = DEFAULT_LIVE_MODEL
     backend_model: str = DEFAULT_BACKEND_MODEL
@@ -167,6 +175,9 @@ class AssistantProfile:
             phone_commands=data.get(CONF_PHONE_COMMANDS, True),
             web_search=data.get(CONF_WEB_SEARCH, False),
             fast_interrupt=data.get(CONF_FAST_INTERRUPT, True),
+            speak_first=data.get(CONF_SPEAK_FIRST, True),
+            opening_line=data.get(CONF_OPENING_LINE) or None,
+            finish_after_hangup=data.get(CONF_FINISH_AFTER_HANGUP, True),
             announce=data.get(CONF_ANNOUNCE, True),
             live_model=data.get(CONF_LIVE_MODEL) or DEFAULT_LIVE_MODEL,
             backend_model=data.get(CONF_BACKEND_MODEL) or DEFAULT_BACKEND_MODEL,
@@ -208,6 +219,7 @@ class Settings:
     language: str = "en"
     digit_timeout: float = DEFAULT_DIGIT_TIMEOUT
     max_call_duration: int = DEFAULT_MAX_CALL_DURATION
+    pickup_delay: int = DEFAULT_PICKUP_DELAY
     # Assistants and commands
     api_key: str | None = None
     commands: tuple[CommandConfig, ...] = field(default_factory=tuple)
@@ -252,6 +264,7 @@ class Settings:
             language=call.get(CONF_LANGUAGE) or hass.config.language,
             digit_timeout=float(call.get(CONF_DIGIT_TIMEOUT, DEFAULT_DIGIT_TIMEOUT)),
             max_call_duration=int(call.get(CONF_MAX_CALL_DURATION, DEFAULT_MAX_CALL_DURATION)),
+            pickup_delay=int(call.get(CONF_PICKUP_DELAY, DEFAULT_PICKUP_DELAY)),
             api_key=data.get(CONF_API_KEY) or None,
             commands=tuple(commands),
             assistants=tuple(assistants),
