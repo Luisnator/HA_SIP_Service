@@ -6,3 +6,5 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+# Panel bundle, built by `npm run build` and for every release
+custom_components/sip_assistant/frontend/

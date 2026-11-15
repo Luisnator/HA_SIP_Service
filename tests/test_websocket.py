@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_API_KEY, CONF_ENTITY_ID, CONF_NAME
 from homeassistant.core import HomeAssistant
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
@@ -45,6 +48,20 @@ async def test_panel_registration(hass: HomeAssistant, mock_config_entry: MockCo
 
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     assert PANEL_URL_PATH not in hass.data[frontend.DATA_PANELS]
+
+
+async def test_missing_panel_bundle(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without a built panel the integration still works and logs how to fix it."""
+    with patch(
+        "custom_components.sip_assistant.panel.PANEL_FILE",
+        Path(__file__).parent / "missing" / "sip-assistant-panel.js",
+    ):
+        await setup(hass, mock_config_entry)
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+    assert PANEL_URL_PATH not in hass.data.get(frontend.DATA_PANELS, {})
+    assert "npm run build" in caplog.text
 
 
 async def test_get_config(

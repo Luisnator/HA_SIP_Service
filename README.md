@@ -44,8 +44,9 @@ Assist tools, all configured in a dedicated sidebar panel.
 
 ### Manual
 
-Copy `custom_components/sip_assistant` to `<config>/custom_components/` and restart
-Home Assistant.
+Download `sip_assistant.zip` from the
+[latest release](https://github.com/Luisnator/HA_SIP_Service/releases/latest), extract it
+into `<config>/custom_components/sip_assistant/` and restart Home Assistant.
 
 ## Setup
 
@@ -212,8 +213,8 @@ uv pip install --python .venv/bin/python -r requirements_test.txt
 ```
 
 Panel (TypeScript and Lit, bundled into
-`custom_components/sip_assistant/frontend/sip-assistant-panel.js`, which is committed so
-HACS installs work without a build step):
+`custom_components/sip_assistant/frontend/sip-assistant-panel.js`). The bundle is not
+committed; build it when you run the integration from a source checkout:
 
 ```bash
 cd frontend
@@ -221,6 +222,10 @@ npm ci
 npm run typecheck
 npm run build
 ```
+
+Releases: bump `version` in `manifest.json` and publish a GitHub release with the
+matching tag (e.g. `v0.3.1`). The *Release* workflow builds the panel and attaches the
+integration as `sip_assistant.zip`, which HACS installs.
 
 | Path | Contents |
 | --- | --- |
