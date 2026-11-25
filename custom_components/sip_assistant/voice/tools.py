@@ -55,7 +55,10 @@ def format_llm_tool(
     schema.setdefault("properties", {})
     description = tool.description or tool.name
     if set(schema["properties"]) >= _EXCLUSIVE_COLOR_ARGS:
-        description += ". Set either color or temperature, never both."
+        description += (
+            ". Only send the fields the caller wants to change and leave out the others."
+            " Use either color or temperature (in Kelvin), never both."
+        )
     if "brightness" in schema["properties"] and _EXCLUSIVE_COLOR_ARGS & set(schema["properties"]):
         description += (
             " Only set brightness when the caller asks to change it; a brightness of 0"
@@ -69,14 +72,26 @@ def format_llm_tool(
     }
 
 
+def _not_positive(value: Any) -> bool:
+    """Return True for numbers of 0 or less; other values are left to validation."""
+    try:
+        return float(value) <= 0
+    except TypeError, ValueError:
+        return False
+
+
 def sanitize_arguments(args: dict[str, Any]) -> dict[str, Any]:
     """Drop empty optional values and resolve conflicting light arguments.
 
-    Voice models fill optional parameters they do not need: null values, both
-    a color and a color temperature (which light.turn_on rejects as exclusive)
-    or a brightness of 0 next to a color, which would switch the light off.
+    Voice models fill optional parameters they do not need: null values, a
+    color temperature of 0 (which no light supports), both a color and a color
+    temperature (which light.turn_on rejects as exclusive) or a brightness of 0
+    next to a color, which would switch the light off.
     """
     args = {key: value for key, value in args.items() if value is not None and value != ""}
+    if "temperature" in args and _not_positive(args["temperature"]):
+        LOGGER.debug("Dropping the color temperature placeholder %s", args["temperature"])
+        del args["temperature"]
     if set(args) >= _EXCLUSIVE_COLOR_ARGS:
         LOGGER.debug("Dropping color temperature in favour of color %s", args["color"])
         del args["temperature"]
