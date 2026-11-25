@@ -327,6 +327,20 @@ def test_sanitize_arguments() -> None:
         "name": "Flur",
         "brightness": 0,
     }
+    # A color temperature of 0 is a placeholder for "unchanged", not 0 K (issue #19).
+    assert sanitize_arguments(
+        {"area": "Dining room", "domain": ["light"], "temperature": 0, "brightness": 60}
+    ) == {"area": "Dining room", "domain": ["light"], "brightness": 60}
+    assert sanitize_arguments({"name": "Flur", "temperature": "0", "color": "red"}) == {
+        "name": "Flur",
+        "color": "red",
+    }
+    assert sanitize_arguments({"name": "Flur", "temperature": -1}) == {"name": "Flur"}
+    # Values that are not numbers are left to Home Assistant's validation.
+    assert sanitize_arguments({"name": "Flur", "temperature": "warm"}) == {
+        "name": "Flur",
+        "temperature": "warm",
+    }
 
 
 async def test_light_color_tool_hint(hass: HomeAssistant) -> None:
@@ -354,7 +368,8 @@ async def test_light_color_tool_hint(hass: HomeAssistant) -> None:
     )
     tool = next(tool for tool in api.tools if tool.name.endswith("HassLightSet"))
     spec = format_llm_tool(tool, api.custom_serializer)
-    assert "Set either color or temperature, never both." in spec["description"]
+    assert "leave out the others" in spec["description"]
+    assert "Use either color or temperature (in Kelvin), never both." in spec["description"]
     assert "a brightness of 0 turns the light off" in spec["description"]
 
 
